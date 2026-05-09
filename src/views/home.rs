@@ -5,12 +5,14 @@ use crate::source::github::{
 use dioxus::prelude::*;
 use dioxus_bulma::{Color, Container, Hero, HeroSize, Notification, Section, Title, TitleSize};
 use futures::{join, StreamExt};
+use std::cmp::Ordering;
 use time::OffsetDateTime;
 
 #[derive(Clone, Copy)]
 enum HomeCommand {
     Refresh,
     Sort(HomeSort),
+    Grouping(HomeGrouping),
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -28,6 +30,21 @@ impl HomeSort {
     }
 }
 
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum HomeGrouping {
+    Grouped,
+    Flat,
+}
+
+impl HomeGrouping {
+    fn label(self) -> &'static str {
+        match self {
+            HomeGrouping::Grouped => "grouped",
+            HomeGrouping::Flat => "flat",
+        }
+    }
+}
+
 #[component]
 pub fn Home() -> Element {
     let review_requests_loading = use_signal(|| true);
@@ -37,6 +54,7 @@ pub fn Home() -> Element {
     let open_pull_requests_error = use_signal(|| None::<String>);
     let open_pull_requests_data = use_signal(|| None::<Vec<OpenPullRequestSummary>>);
     let sort_order = use_signal(|| HomeSort::Newest);
+    let grouping = use_signal(|| HomeGrouping::Grouped);
 
     let refresh = use_coroutine(move |mut rx| {
         let review_requests_loading = review_requests_loading;
@@ -46,6 +64,7 @@ pub fn Home() -> Element {
         let open_pull_requests_error = open_pull_requests_error;
         let open_pull_requests_data = open_pull_requests_data;
         let mut sort_order = sort_order;
+        let mut grouping = grouping;
 
         async move {
             load_home_data(
@@ -77,6 +96,9 @@ pub fn Home() -> Element {
                         sort_loaded_home_data(review_requests_data, open_pull_requests_data, order);
                         sort_order.set(order);
                     }
+                    HomeCommand::Grouping(mode) => {
+                        grouping.set(mode);
+                    }
                 }
             }
         }
@@ -89,6 +111,7 @@ pub fn Home() -> Element {
     let open_pull_requests_error_value = open_pull_requests_error();
     let open_pull_requests_data_value = open_pull_requests_data();
     let sort_order_value = sort_order();
+    let grouping_value = grouping();
     let is_loading = review_requests_loading_value || open_pull_requests_loading_value;
 
     rsx! {
@@ -169,6 +192,33 @@ pub fn Home() -> Element {
                                     span { "{HomeSort::Newest.label()}" }
                                 }
                             }
+                            div { class: "buttons has-addons review-grouping-selector mr-3",
+                                button { class: "button is-static review-grouping-selector-label",
+                                    span { class: "has-text-weight-semibold has-text-grey-dark", "group:" }
+                                }
+                                button {
+                                    class: if grouping_value == HomeGrouping::Grouped {
+                                        "button is-info is-selected"
+                                    } else {
+                                        "button is-info is-light"
+                                    },
+                                    onclick: move |_| {
+                                        refresh.send(HomeCommand::Grouping(HomeGrouping::Grouped))
+                                    },
+                                    span { "{HomeGrouping::Grouped.label()}" }
+                                }
+                                button {
+                                    class: if grouping_value == HomeGrouping::Flat {
+                                        "button is-success is-selected"
+                                    } else {
+                                        "button is-success is-light"
+                                    },
+                                    onclick: move |_| {
+                                        refresh.send(HomeCommand::Grouping(HomeGrouping::Flat))
+                                    },
+                                    span { "{HomeGrouping::Flat.label()}" }
+                                }
+                            }
                             button {
                                 class: if is_loading {
                                     "button is-loading is-inline-flex is-align-items-center is-justify-content-center"
@@ -200,98 +250,115 @@ pub fn Home() -> Element {
             class: "review-section pt-5",
             Container {
                 class: "review-container",
-                div { class: "review-dashboard",
-                    div { class: "review-panel",
-                        PullRequestListHeader {
-                            title: "Review Requests".to_string(),
-                            subtitle: "...".to_string(),
-                            count_label: if review_requests_error_value.is_none() {
-                                review_requests_data_value
-                                    .as_ref()
-                                    .map(|prs| format!("{} open", prs.len()))
-                            } else {
-                                None
-                            },
-                        }
-                        match (
-                            review_requests_loading_value,
-                            review_requests_error_value,
-                            review_requests_data_value,
-                        ) {
-                            (_, Some(err), _) => rsx! {
-                                Notification {
-                                    color: Some(Color::Danger),
-                                    p { "Error: {err}" }
+                match grouping_value {
+                    HomeGrouping::Grouped => rsx! {
+                        div { class: "review-dashboard",
+                            div { class: "review-panel",
+                                PullRequestListHeader {
+                                    title: "Review Requests".to_string(),
+                                    subtitle: "...".to_string(),
+                                    count_label: if review_requests_error_value.is_none() {
+                                        review_requests_data_value
+                                            .as_ref()
+                                            .map(|prs| format!("{} open", prs.len()))
+                                    } else {
+                                        None
+                                    },
                                 }
-                            },
-                            (true, None, None) => rsx! {
-                                Notification {
-                                    color: Some(Color::Info),
-                                    "Loading review requests…"
+                                match (
+                                    review_requests_loading_value,
+                                    review_requests_error_value,
+                                    review_requests_data_value,
+                                ) {
+                                    (_, Some(err), _) => rsx! {
+                                        Notification {
+                                            color: Some(Color::Danger),
+                                            p { "Error: {err}" }
+                                        }
+                                    },
+                                    (true, None, None) => rsx! {
+                                        Notification {
+                                            color: Some(Color::Info),
+                                            "Loading review requests…"
+                                        }
+                                    },
+                                    (_, None, Some(prs)) if prs.is_empty() => rsx! {
+                                        Notification {
+                                            color: Some(Color::Success),
+                                            "No active review requests."
+                                        }
+                                    },
+                                    (_, None, Some(prs)) => rsx! {
+                                        div { class: "review-card-stack",
+                                            for pr in prs {
+                                                ReviewRequestCard { pr: pr.clone() }
+                                            }
+                                        }
+                                    },
+                                    _ => rsx! { div {} },
                                 }
-                            },
-                            (_, None, Some(prs)) if prs.is_empty() => rsx! {
-                                Notification {
-                                    color: Some(Color::Success),
-                                    "No active review requests."
-                                }
-                            },
-                            (_, None, Some(prs)) => rsx! {
-                                div { class: "review-card-stack",
-                                    for pr in prs {
-                                        ReviewRequestCard { pr: pr.clone() }
-                                    }
-                                }
-                            },
-                            _ => rsx! { div {} },
-                        }
-                    }
+                            }
 
-                    div { class: "review-panel",
-                        PullRequestListHeader {
-                            title: "My PRs".to_string(),
-                            subtitle: "...",
-                            count_label: if open_pull_requests_error_value.is_none() {
-                                open_pull_requests_data_value
-                                    .as_ref()
-                                    .map(|prs| format!("{} open", prs.len()))
-                            } else {
-                                None
-                            },
+                            div { class: "review-panel",
+                                PullRequestListHeader {
+                                    title: "My PRs".to_string(),
+                                    subtitle: "...",
+                                    count_label: if open_pull_requests_error_value.is_none() {
+                                        open_pull_requests_data_value
+                                            .as_ref()
+                                            .map(|prs| format!("{} open", prs.len()))
+                                    } else {
+                                        None
+                                    },
+                                }
+                                match (
+                                    open_pull_requests_loading_value,
+                                    open_pull_requests_error_value,
+                                    open_pull_requests_data_value,
+                                ) {
+                                    (_, Some(err), _) => rsx! {
+                                        Notification {
+                                            color: Some(Color::Danger),
+                                            p { "Error: {err}" }
+                                        }
+                                    },
+                                    (true, None, None) => rsx! {
+                                        Notification {
+                                            color: Some(Color::Info),
+                                            "Loading your pull requests…"
+                                        }
+                                    },
+                                    (_, None, Some(prs)) if prs.is_empty() => rsx! {
+                                        Notification {
+                                            color: Some(Color::Success),
+                                            "No open authored pull requests."
+                                        }
+                                    },
+                                    (_, None, Some(prs)) => rsx! {
+                                        div { class: "review-card-stack",
+                                            for pr in prs {
+                                                OpenPullRequestCard { pr: pr.clone() }
+                                            }
+                                        }
+                                    },
+                                    _ => rsx! { div {} },
+                                }
+                            }
                         }
-                        match (
-                            open_pull_requests_loading_value,
-                            open_pull_requests_error_value,
-                            open_pull_requests_data_value,
-                        ) {
-                            (_, Some(err), _) => rsx! {
-                                Notification {
-                                    color: Some(Color::Danger),
-                                    p { "Error: {err}" }
-                                }
-                            },
-                            (true, None, None) => rsx! {
-                                Notification {
-                                    color: Some(Color::Info),
-                                    "Loading your pull requests…"
-                                }
-                            },
-                            (_, None, Some(prs)) if prs.is_empty() => rsx! {
-                                Notification {
-                                    color: Some(Color::Success),
-                                    "No open authored pull requests."
-                                }
-                            },
-                            (_, None, Some(prs)) => rsx! {
-                                div { class: "review-card-stack",
-                                    for pr in prs {
-                                        OpenPullRequestCard { pr: pr.clone() }
-                                    }
-                                }
-                            },
-                            _ => rsx! { div {} },
+                    },
+                    HomeGrouping::Flat => rsx! {
+                        div { class: "review-dashboard review-dashboard-flat",
+                            FlatPullRequestList {
+                                review_requests_loading: review_requests_loading_value,
+                                review_requests_error: review_requests_error_value,
+                                review_requests_data: review_requests_data_value,
+                                open_pull_requests_loading: open_pull_requests_loading_value,
+                                open_pull_requests_error: open_pull_requests_error_value,
+                                open_pull_requests_data: open_pull_requests_data_value,
+                                sort_order: sort_order_value,
+                            }
                         }
-                    }
+                    },
                 }
             }
         }
@@ -421,6 +488,135 @@ fn PullRequestListHeader(title: String, subtitle: String, count_label: Option<St
                 }
             }
         }
+    }
+}
+
+#[derive(Clone, PartialEq)]
+enum HomeFeedItem {
+    ReviewRequest(PullRequestSummary),
+    OpenPullRequest(OpenPullRequestSummary),
+}
+
+#[component]
+fn FlatPullRequestList(
+    review_requests_loading: bool,
+    review_requests_error: Option<String>,
+    review_requests_data: Option<Vec<PullRequestSummary>>,
+    open_pull_requests_loading: bool,
+    open_pull_requests_error: Option<String>,
+    open_pull_requests_data: Option<Vec<OpenPullRequestSummary>>,
+    sort_order: HomeSort,
+) -> Element {
+    let review_requests = review_requests_data.unwrap_or_default();
+    let open_pull_requests = open_pull_requests_data.unwrap_or_default();
+    let items = combine_home_feed_items(review_requests, open_pull_requests, sort_order);
+    let has_errors = review_requests_error.is_some() || open_pull_requests_error.is_some();
+    let count_label = if has_errors {
+        None
+    } else {
+        Some(format!("{} open", items.len()))
+    };
+    let review_requests_error = review_requests_error.as_ref();
+    let open_pull_requests_error = open_pull_requests_error.as_ref();
+    let is_initial_loading =
+        items.is_empty() && (review_requests_loading || open_pull_requests_loading) && !has_errors;
+
+    rsx! {
+        div { class: "review-panel",
+            PullRequestListHeader {
+                title: "All Pull Requests".to_string(),
+                subtitle: "Review requests and your open pull requests combined.".to_string(),
+                count_label,
+            }
+            if let Some(err) = review_requests_error {
+                Notification {
+                    color: Some(Color::Danger),
+                    p { "Review requests error: {err}" }
+                }
+            }
+            if let Some(err) = open_pull_requests_error {
+                Notification {
+                    color: Some(Color::Danger),
+                    p { "Open pull requests error: {err}" }
+                }
+            }
+            if is_initial_loading {
+                Notification {
+                    color: Some(Color::Info),
+                    "Loading pull requests…"
+                }
+            } else if items.is_empty() && !has_errors {
+                Notification {
+                    color: Some(Color::Success),
+                    "No pull requests found."
+                }
+            } else {
+                div { class: "review-card-stack",
+                    for item in items {
+                        HomeFeedCard { item }
+                    }
+                }
+            }
+        }
+    }
+}
+
+#[component]
+fn HomeFeedCard(item: HomeFeedItem) -> Element {
+    match item {
+        HomeFeedItem::ReviewRequest(pr) => rsx! {
+            ReviewRequestCard { pr }
+        },
+        HomeFeedItem::OpenPullRequest(pr) => rsx! {
+            OpenPullRequestCard { pr }
+        },
+    }
+}
+
+fn combine_home_feed_items(
+    review_requests: Vec<PullRequestSummary>,
+    open_pull_requests: Vec<OpenPullRequestSummary>,
+    sort_order: HomeSort,
+) -> Vec<HomeFeedItem> {
+    let mut items = Vec::with_capacity(review_requests.len() + open_pull_requests.len());
+    items.extend(review_requests.into_iter().map(HomeFeedItem::ReviewRequest));
+    items.extend(
+        open_pull_requests
+            .into_iter()
+            .map(HomeFeedItem::OpenPullRequest),
+    );
+    items.sort_by(|a, b| compare_home_feed_items(a, b, sort_order));
+    items
+}
+
+fn compare_home_feed_items(a: &HomeFeedItem, b: &HomeFeedItem, sort_order: HomeSort) -> Ordering {
+    match sort_order {
+        HomeSort::Oldest => match (feed_item_sort_time(a), feed_item_sort_time(b)) {
+            (Some(a), Some(b)) => a.cmp(&b),
+            (Some(_), None) => Ordering::Less,
+            (None, Some(_)) => Ordering::Greater,
+            (None, None) => feed_item_fallback_time(a).cmp(&feed_item_fallback_time(b)),
+        },
+        HomeSort::Newest => match (feed_item_sort_time(a), feed_item_sort_time(b)) {
+            (Some(a), Some(b)) => b.cmp(&a),
+            (Some(_), None) => Ordering::Less,
+            (None, Some(_)) => Ordering::Greater,
+            (None, None) => feed_item_fallback_time(b).cmp(&feed_item_fallback_time(a)),
+        },
+    }
+}
+
+fn feed_item_sort_time(item: &HomeFeedItem) -> Option<OffsetDateTime> {
+    match item {
+        HomeFeedItem::ReviewRequest(pr) => pr.requested_at,
+        HomeFeedItem::OpenPullRequest(pr) => pr.last_pushed_at,
+    }
+}
+
+fn feed_item_fallback_time(item: &HomeFeedItem) -> OffsetDateTime {
+    match item {
+        HomeFeedItem::ReviewRequest(pr) => pr.updated_at,
+        HomeFeedItem::OpenPullRequest(pr) => pr.opened_at,
     }
 }
 
