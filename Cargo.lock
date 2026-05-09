@@ -1719,6 +1719,7 @@ name = "devbuddy"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "async-trait",
  "dioxus",
  "dioxus-bulma",
  "futures",

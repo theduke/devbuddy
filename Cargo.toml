@@ -18,6 +18,7 @@ native = ["dioxus/native", "ureq"]
 
 [dependencies]
 anyhow = "1.0.102"
+async-trait = "0.1.89"
 dioxus = { version = "0.7.9", features = ["router"] }
 dioxus-bulma = { git = "https://github.com/theduke/dioxus-bulma" }
 futures = "0.3.32"
