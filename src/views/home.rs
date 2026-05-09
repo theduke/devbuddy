@@ -8,9 +8,10 @@ use crate::{
 };
 use dioxus::prelude::*;
 use dioxus_bulma::{Color, Container, Hero, HeroSize, Notification, Section, Title, TitleSize};
+use dioxus_sdk_notification::Notification as DesktopNotification;
 use futures::{join, StreamExt};
-use std::sync::Arc;
 use std::{cmp::Ordering, time::Duration};
+use std::{collections::BTreeMap, sync::Arc};
 use time::OffsetDateTime;
 
 #[derive(Clone, Copy)]
@@ -87,10 +88,12 @@ pub fn Home() -> Element {
                 sort_order(),
             )
             .await;
+            let mut last_notified_snapshot = meaningful_home_snapshot(&stored_items);
 
             refresh_home_data(
                 store.as_ref(),
                 &mut stored_items,
+                &mut last_notified_snapshot,
                 review_requests_loading,
                 review_requests_error,
                 review_requests_data,
@@ -107,6 +110,7 @@ pub fn Home() -> Element {
                         refresh_home_data(
                             store.as_ref(),
                             &mut stored_items,
+                            &mut last_notified_snapshot,
                             review_requests_loading,
                             review_requests_error,
                             review_requests_data,
@@ -451,6 +455,7 @@ async fn load_stored_home_data(
 async fn refresh_home_data(
     store: &dyn Store,
     stored_items: &mut Vec<Item>,
+    last_notified_snapshot: &mut HomeSnapshot,
     mut review_requests_loading: Signal<bool>,
     mut review_requests_error: Signal<Option<String>>,
     review_requests_data: Signal<Option<Vec<Item>>>,
@@ -513,6 +518,11 @@ async fn refresh_home_data(
             review_requests_data_value.clone(),
             open_pull_requests_data_value.clone(),
         );
+        let fresh_snapshot = meaningful_home_snapshot(&fresh_items);
+        if let Some(changes) = diff_home_snapshots(last_notified_snapshot, &fresh_snapshot) {
+            send_home_change_notification(&changes);
+            *last_notified_snapshot = fresh_snapshot;
+        }
         if fresh_items != *stored_items {
             if let Err(err) = store.store_items(fresh_items.clone()).await {
                 eprintln!("failed to persist refreshed home items: {err:#}");
@@ -583,6 +593,163 @@ fn combine_home_items_for_storage(
     items.append(&mut review_requests);
     items.append(&mut open_pull_requests);
     items
+}
+
+type HomeSnapshot = BTreeMap<String, Item>;
+
+#[derive(Default)]
+struct HomeSnapshotChanges {
+    new_items: Vec<Item>,
+    changed_items: Vec<Item>,
+    removed_items: Vec<Item>,
+}
+
+impl HomeSnapshotChanges {
+    fn is_empty(&self) -> bool {
+        self.new_items.is_empty() && self.changed_items.is_empty() && self.removed_items.is_empty()
+    }
+
+    fn summary(&self) -> String {
+        match (
+            self.new_items.is_empty(),
+            self.changed_items.is_empty(),
+            self.removed_items.is_empty(),
+        ) {
+            (false, true, true) => {
+                singular_or_plural(self.new_items.len(), "New GitHub item", "New GitHub items")
+            }
+            (true, false, true) => singular_or_plural(
+                self.changed_items.len(),
+                "GitHub item changed",
+                "GitHub items changed",
+            ),
+            (true, true, false) => singular_or_plural(
+                self.removed_items.len(),
+                "GitHub item removed",
+                "GitHub items removed",
+            ),
+            _ => "GitHub items changed".to_string(),
+        }
+    }
+
+    fn body(&self) -> String {
+        let mut sections = Vec::new();
+        if let Some(section) = notification_section("New", &self.new_items) {
+            sections.push(section);
+        }
+        if let Some(section) = notification_section("Changed", &self.changed_items) {
+            sections.push(section);
+        }
+        if let Some(section) = notification_section("Removed", &self.removed_items) {
+            sections.push(section);
+        }
+        sections.join(" · ")
+    }
+}
+
+fn meaningful_home_snapshot(items: &[Item]) -> HomeSnapshot {
+    items
+        .iter()
+        .cloned()
+        .map(|item| (home_item_key(&item), item))
+        .collect()
+}
+
+fn diff_home_snapshots(
+    previous: &HomeSnapshot,
+    current: &HomeSnapshot,
+) -> Option<HomeSnapshotChanges> {
+    let mut changes = HomeSnapshotChanges::default();
+
+    for (key, current_item) in current {
+        match previous.get(key) {
+            None => changes.new_items.push(current_item.clone()),
+            Some(previous_item) if previous_item.kind != current_item.kind => {
+                changes.changed_items.push(current_item.clone());
+            }
+            _ => {}
+        }
+    }
+
+    for (key, previous_item) in previous {
+        if !current.contains_key(key) {
+            changes.removed_items.push(previous_item.clone());
+        }
+    }
+
+    if changes.is_empty() {
+        None
+    } else {
+        Some(changes)
+    }
+}
+
+fn send_home_change_notification(changes: &HomeSnapshotChanges) {
+    let mut notification = DesktopNotification::new();
+    notification
+        .app_name("Devbuddy")
+        .summary(changes.summary())
+        .body(changes.body());
+
+    if let Err(err) = notification.show() {
+        eprintln!("failed to show desktop notification: {err}");
+    }
+}
+
+fn notification_section(label: &str, items: &[Item]) -> Option<String> {
+    if items.is_empty() {
+        return None;
+    }
+
+    Some(format!("{label}: {}", summarize_notification_items(items)))
+}
+
+fn summarize_notification_items(items: &[Item]) -> String {
+    const MAX_ITEMS: usize = 3;
+
+    let labels: Vec<String> = items
+        .iter()
+        .take(MAX_ITEMS)
+        .map(item_notification_label)
+        .collect();
+
+    match items.len() {
+        1..=MAX_ITEMS => labels.join(", "),
+        count => {
+            let remaining = count.saturating_sub(MAX_ITEMS);
+            format!("{} and {} more", labels.join(", "), remaining)
+        }
+    }
+}
+
+fn singular_or_plural(count: usize, singular: &str, plural: &str) -> String {
+    if count == 1 {
+        singular.to_string()
+    } else {
+        plural.to_string()
+    }
+}
+
+fn home_item_key(item: &Item) -> String {
+    match &item.kind {
+        ItemKind::GithubReviewRequest(pr) => {
+            format!("review-request:{}:{}/{}", pr.number, pr.owner, pr.repo)
+        }
+        ItemKind::GithubUserPullRequest(pr) => {
+            format!("open-pull-request:{}:{}/{}", pr.number, pr.owner, pr.repo)
+        }
+    }
+}
+
+fn item_notification_label(item: &Item) -> String {
+    match &item.kind {
+        ItemKind::GithubReviewRequest(pr) => {
+            format!("review request {}/{} #{}", pr.owner, pr.repo, pr.number)
+        }
+        ItemKind::GithubUserPullRequest(pr) => {
+            format!("your pull request {}/{} #{}", pr.owner, pr.repo, pr.number)
+        }
+    }
 }
 
 fn current_data_age_label(
@@ -1211,4 +1378,65 @@ fn format_relative_time(t: OffsetDateTime) -> String {
 
     let plural = if value == 1 { "" } else { "s" };
     format!("{} {}{} {}", value, unit, plural, suffix)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn review_request_item(number: i64, title: &str, retrieved_at: i64, requested_at: i64) -> Item {
+        Item {
+            kind: ItemKind::GithubReviewRequest(GithubReviewRequestItem {
+                owner: "octo".to_string(),
+                repo: "repo".to_string(),
+                number,
+                title: title.to_string(),
+                author: "alice".to_string(),
+                html_url: format!("https://example.com/{number}"),
+                opened_at: OffsetDateTime::from_unix_timestamp(10).unwrap(),
+                last_pushed_at: Some(OffsetDateTime::from_unix_timestamp(20).unwrap()),
+                updated_at: OffsetDateTime::from_unix_timestamp(30).unwrap(),
+                requested_at: Some(OffsetDateTime::from_unix_timestamp(requested_at).unwrap()),
+            }),
+            retrieved_at: OffsetDateTime::from_unix_timestamp(retrieved_at).unwrap(),
+            ignore: false,
+            ignore_until: None,
+        }
+    }
+
+    #[test]
+    fn meaningful_snapshot_ignores_retrieved_at() {
+        let before = review_request_item(1, "Initial", 100, 200);
+        let after = review_request_item(1, "Initial", 200, 200);
+
+        let before_snapshot = meaningful_home_snapshot(&[before]);
+        let after_snapshot = meaningful_home_snapshot(&[after]);
+
+        assert_eq!(before_snapshot, after_snapshot);
+        assert!(diff_home_snapshots(&before_snapshot, &after_snapshot).is_none());
+    }
+
+    #[test]
+    fn snapshot_diff_detects_new_changed_and_removed_items() {
+        let previous = meaningful_home_snapshot(&[
+            review_request_item(1, "Initial", 100, 200),
+            review_request_item(2, "Will change", 100, 201),
+        ]);
+        let current = meaningful_home_snapshot(&[
+            review_request_item(1, "Initial", 200, 200),
+            review_request_item(2, "Changed title", 200, 201),
+            review_request_item(3, "Brand new", 200, 202),
+        ]);
+
+        let changes = diff_home_snapshots(&previous, &current).expect("expected a diff");
+
+        assert_eq!(changes.new_items.len(), 1);
+        assert_eq!(changes.changed_items.len(), 1);
+        assert_eq!(changes.removed_items.len(), 0);
+        assert_eq!(changes.summary(), "GitHub items changed");
+        assert_eq!(
+            changes.body(),
+            "New: review request octo/repo #3 · Changed: review request octo/repo #2"
+        );
+    }
 }
