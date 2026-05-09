@@ -120,18 +120,18 @@ pub fn Home() -> Element {
                     div {
                         class: "mt-4 mt-0-desktop",
                         div { class: "is-flex is-flex-wrap-wrap is-align-items-center is-justify-content-flex-end",
-                            div { class: "is-flex is-align-items-center mr-3",
-                                span { class: "icon is-small mr-1",
-                                    img {
-                                        src: asset!("/assets/sort.svg"),
-                                        alt: "",
-                                        width: "16",
-                                        height: "16",
+                            div { class: "buttons has-addons review-sort-selector mr-3",
+                                button { class: "button is-static review-sort-selector-label",
+                                    span { class: "icon is-small",
+                                        img {
+                                            src: asset!("/assets/sort.svg"),
+                                            alt: "",
+                                            width: "16",
+                                            height: "16",
+                                        }
                                     }
+                                    span { class: "has-text-weight-semibold has-text-grey-dark", "sort:" }
                                 }
-                                span { class: "has-text-weight-semibold has-text-grey-dark", "sort:" }
-                            }
-                            div { class: "buttons has-addons mb-0 mr-3",
                                 button {
                                     class: if sort_order_value == HomeSort::Oldest {
                                         "button is-warning is-selected"
@@ -171,18 +171,21 @@ pub fn Home() -> Element {
                             }
                             button {
                                 class: if is_loading {
-                                    "button is-loading"
+                                    "button is-loading is-inline-flex is-align-items-center is-justify-content-center"
                                 } else {
-                                    "button"
+                                    "button is-inline-flex is-align-items-center is-justify-content-center"
                                 },
                                 disabled: is_loading,
+                                "aria-label": "Refresh",
                                 onclick: move |_| refresh.send(HomeCommand::Refresh),
-                                span { class: "icon is-small",
-                                    img {
-                                        src: asset!("/assets/refresh.svg"),
-                                        alt: "",
-                                        width: "16",
-                                        height: "16",
+                                if !is_loading {
+                                    span { class: "icon is-small m-0 is-flex is-align-items-center is-justify-content-center",
+                                        img {
+                                            src: asset!("/assets/refresh.svg"),
+                                            alt: "",
+                                            width: "16",
+                                            height: "16",
+                                        }
                                     }
                                 }
                                 span { class: "is-sr-only", "Refresh" }
