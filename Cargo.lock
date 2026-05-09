@@ -1725,6 +1725,7 @@ dependencies = [
  "dioxus-sdk-notification",
  "futures",
  "http",
+ "notify-rust",
  "serde",
  "serde_json",
  "time",

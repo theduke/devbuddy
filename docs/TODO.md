@@ -83,7 +83,7 @@ Repeatedly spawn subagents until they report that no more work is available.
 - [x] update home.rs to use the new abstract notifier system, see
       src/notifiy/mod.rs and DynNotifier
 
-- [ ] Extend the notification system in src/notify/mod.rs
+- [x] Extend the notification system in src/notify/mod.rs
       add an additional trait Notifier implementation for linux in notification/linux.rs
       it should use the notify-rust crate, which is already used internally
       by the dioxus-sdk-notification crate.

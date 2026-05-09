@@ -1,3 +1,3 @@
-DONE better notifications: improve the notification system
-Changed: src/notify/mod.rs, src/notify/sdk.rs, src/main.rs, docs/TODO.md
-Validation: cargo fmt; cargo check --quiet --message-format=short
+Implemented linux notifier backend and richer notification capabilities.
+Changed: Cargo.toml, Cargo.lock, src/notify/mod.rs, src/notify/linux.rs, docs/TODO.md.
+Validated: cargo fmt; cargo check --quiet --message-format=short.
