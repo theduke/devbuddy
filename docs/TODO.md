@@ -33,7 +33,7 @@ Repeatedly spawn subagents until they report that no more work is available.
 - [x] improve store sharing:
       currently home.rs constructs a store.
       instead, the store should be initialized in main.rs and shared with
-      the whole app through the dioxus context system 
+      the whole app through the dioxus context system
        use_context_provider(|| mytype); +  let mut signal: Signal<mytype> = use_context();
        Define a type DynStore = Arc<dyn Store>; to use.
        define a use_store() helper function to easily retrieve the store, based on use_context();
@@ -58,7 +58,7 @@ Repeatedly spawn subagents until they report that no more work is available.
       retrieval, and only persist the new config when token is valid!
 
 - [x] Extend github client in src/source/github.rs with a method to retrieve
-      status for a specific CI run, want to know number of: total jobs, 
+      status for a specific CI run, want to know number of: total jobs,
       in progress, failed, succeeded
 
 - [x] Implement monitoring of CI runs for PRs in home.rs
@@ -69,18 +69,18 @@ Repeatedly spawn subagents until they report that no more work is available.
       active job runs should be monitored outside of the regular fetch update
       ticker, with a separate timer interval (defined as a separate constant)
       eg 15 seconds.
-      
-- [ ] better notifications: improve the notification system 
+
+- [x] better notifications: improve the notification system 
       in src/notify/mod.rs, define a 'trait Notifier' that abstracts
       notification sending
       add one implementor based on the already used dioxus_sdk_notification
-      crate - see src/views/home.rs for usage, put it in a notification/sdk.rs 
+      crate - see src/views/home.rs for usage, put it in a notification/sdk.rs
       submodule!
 
       then define a type DynNotifier = Arc<dyn Notifier>, and a helper
       build_notifier() function in nofitication/mod.rs
 
-- [ ] update home.rs to use the new abstract notifier system, see 
+- [ ] update home.rs to use the new abstract notifier system, see
       src/notifiy/mod.rs and DynNotifier
 
 - [ ] Extend the notification system in src/notify/mod.rs
@@ -101,9 +101,9 @@ Repeatedly spawn subagents until they report that no more work is available.
 
 - [ ] basic pr notificat
 
-- [ ] better github pr CI run notifications 
+- [ ] better github pr CI run notifications
       for the active PR CI runs tracked in home.rs, implement a notification mechanism
       when an active CI run is detected , send a notification
       if the Notifier backend supports it, update the notification when
       the status changes (fails, succeeds, when in progress update job counter (in progres, succeeded, failed)
-      notifications when jobs finish (fail, 
+      notifications when jobs finish (fail,

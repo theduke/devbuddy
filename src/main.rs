@@ -1,6 +1,7 @@
 #![allow(non_snake_case)]
 
 mod components;
+mod notify;
 mod route;
 mod source;
 mod store;
