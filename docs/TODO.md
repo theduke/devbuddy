@@ -47,7 +47,7 @@ Repeatedly spawn subagents until they report that no more work is available.
       define a GithubTokenSource enum with appropriate values
       use the use_store() helper to retrieve the store
 
-- [ ] extend the src/source/github.rs client with a simple method to validate
+- [x] extend the src/source/github.rs client with a simple method to validate
       the active token, eg by retrieving basic user context and returning it.
 
 - [ ] Extend views/settings.rs page with a form to configure a custom github token

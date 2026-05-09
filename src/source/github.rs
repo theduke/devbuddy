@@ -117,6 +117,12 @@ pub const GITHUB_OPEN_PRS_GRAPHQL: &str = r#"query($query: String!, $after: Stri
   }
 }"#;
 
+pub const GITHUB_VIEWER_GRAPHQL: &str = r#"query {
+  viewer {
+    login
+  }
+}"#;
+
 pub const GITHUB_TOKEN_ENV_VARS: &[&str] = &[
     "GITHUB_TOKEN",
     "GH_TOKEN",
@@ -206,6 +212,9 @@ struct GithubOpenPullRequestsVariables {
     after: Option<String>,
 }
 
+#[derive(Debug, Serialize)]
+struct GithubEmptyVariables;
+
 #[derive(Debug, Deserialize)]
 struct GithubGraphQLResponse<T> {
     data: T,
@@ -229,6 +238,12 @@ struct GithubGraphQLResponseData {
 #[serde(rename_all = "camelCase")]
 struct GithubOpenPullRequestsResponseData {
     search: GithubOpenPullRequestsSearchResult,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct GithubViewerResponseData {
+    viewer: GithubViewer,
 }
 
 #[derive(Debug, Deserialize)]
@@ -569,6 +584,22 @@ impl GithubClient {
         });
 
         Ok(results)
+    }
+
+    pub async fn validate_token(&self) -> Result<String> {
+        if self.token.trim().is_empty() {
+            return Err(anyhow!("github token is empty"));
+        }
+
+        let response: GithubViewerResponseData = do_github_graphql_request(
+            &self.base_url,
+            &self.token,
+            GITHUB_VIEWER_GRAPHQL,
+            GithubEmptyVariables,
+        )
+        .await?;
+
+        Ok(response.viewer.login)
     }
 
     pub async fn open_pull_requests_for_user(&self) -> Result<Vec<OpenPullRequestSummary>> {
