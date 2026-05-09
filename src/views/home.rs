@@ -97,9 +97,10 @@ fn PullRequestCard(pr: PullRequestSummary) -> Element {
                 span { class: "has-text-weight-semibold is-size-6", "{title}" }
             }
 
-            div { class: "is-flex is-flex-direction-column gap-1",
-                span { class: "is-size-5 has-text-weight-semibold has-text-link", title: requested_exact, "Requested {requested_relative}" }
-                span { class: "is-size-7 has-text-grey", title: updated_exact, "Updated {updated_relative}" }
+            p { class: "",
+                span { class: "is-size-5 has-text-weight-bold", title: requested_exact, "Requested {requested_relative}" }
+                " "
+                span { class: "is-size-5 ", title: updated_exact, "Updated {updated_relative}" }
             }
         }
     }
