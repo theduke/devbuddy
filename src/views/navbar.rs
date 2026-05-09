@@ -31,6 +31,16 @@ pub fn Navbar() -> Element {
                         }
                         span { class: "ml-2 has-text-weight-semibold", "DevBuddy" }
                     }
+                    Link {
+                        to: Route::Settings {},
+                        class: settings_class,
+                        style: "margin-left: auto;",
+                        title: "Settings",
+                        aria_label: "Settings",
+                        onclick: move |_| menu_open.set(false),
+                        span { class: "icon is-small", img { src: asset!("/assets/gear.svg"), alt: "" } }
+                        span { class: "is-sr-only", "Settings" }
+                    }
                     button {
                         class: if menu_open() { "navbar-burger is-active" } else { "navbar-burger" },
                         aria_label: "menu",
@@ -46,19 +56,6 @@ pub fn Navbar() -> Element {
                     class: if menu_open() { "navbar-menu is-active" } else { "navbar-menu" },
                     div {
                         class: "navbar-start",
-                    }
-
-                    div {
-                        class: "navbar-end",
-                        Link {
-                            to: Route::Settings {},
-                            class: settings_class,
-                            title: "Settings",
-                            aria_label: "Settings",
-                            onclick: move |_| menu_open.set(false),
-                            span { class: "icon is-small", "⚙" }
-                            span { class: "is-sr-only", "Settings" }
-                        }
                     }
                 }
             }
