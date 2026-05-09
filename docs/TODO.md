@@ -61,7 +61,7 @@ Repeatedly spawn subagents until they report that no more work is available.
       status for a specific CI run, want to know number of: total jobs, 
       in progress, failed, succeeded
 
-- [ ] Implement monitoring of CI runs for PRs in home.rs
+- [x] Implement monitoring of CI runs for PRs in home.rs
       if a PR is detected as having an active CI run,
       show it at the top, in a separate section,
       with a loading spinner (bulma button .is-loading), and a counter for
