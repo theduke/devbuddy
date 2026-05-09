@@ -4,11 +4,13 @@ use crate::{
         GithubReviewRequestItem, GithubUserPullRequestItem, Item, ItemKind, PullRequestCiStatus,
         PullRequestReviewDecision,
     },
+    store::{FsStore, Store},
 };
 use dioxus::prelude::*;
 use dioxus_bulma::{Color, Container, Hero, HeroSize, Notification, Section, Title, TitleSize};
 use futures::{join, StreamExt};
 use std::cmp::Ordering;
+use std::sync::Arc;
 use time::OffsetDateTime;
 
 #[derive(Clone, Copy)]
@@ -58,8 +60,10 @@ pub fn Home() -> Element {
     let open_pull_requests_data = use_signal(|| None::<Vec<Item>>);
     let sort_order = use_signal(|| HomeSort::Newest);
     let grouping = use_signal(|| HomeGrouping::Grouped);
+    let store: Arc<dyn Store> = Arc::new(FsStore::new(None));
 
     let refresh = use_coroutine(move |mut rx| {
+        let store = Arc::clone(&store);
         let review_requests_loading = review_requests_loading;
         let review_requests_error = review_requests_error;
         let review_requests_data = review_requests_data;
@@ -70,7 +74,21 @@ pub fn Home() -> Element {
         let mut grouping = grouping;
 
         async move {
-            load_home_data(
+            let mut stored_items = load_stored_home_data(
+                store.as_ref(),
+                review_requests_loading,
+                review_requests_error,
+                review_requests_data,
+                open_pull_requests_loading,
+                open_pull_requests_error,
+                open_pull_requests_data,
+                sort_order(),
+            )
+            .await;
+
+            refresh_home_data(
+                store.as_ref(),
+                &mut stored_items,
                 review_requests_loading,
                 review_requests_error,
                 review_requests_data,
@@ -84,7 +102,9 @@ pub fn Home() -> Element {
             while let Some(command) = rx.next().await {
                 match command {
                     HomeCommand::Refresh => {
-                        load_home_data(
+                        refresh_home_data(
+                            store.as_ref(),
+                            &mut stored_items,
                             review_requests_loading,
                             review_requests_error,
                             review_requests_data,
@@ -368,13 +388,51 @@ pub fn Home() -> Element {
     }
 }
 
-async fn load_home_data(
+async fn load_stored_home_data(
+    store: &dyn Store,
     mut review_requests_loading: Signal<bool>,
     mut review_requests_error: Signal<Option<String>>,
-    mut review_requests_data: Signal<Option<Vec<Item>>>,
+    review_requests_data: Signal<Option<Vec<Item>>>,
     mut open_pull_requests_loading: Signal<bool>,
     mut open_pull_requests_error: Signal<Option<String>>,
-    mut open_pull_requests_data: Signal<Option<Vec<Item>>>,
+    open_pull_requests_data: Signal<Option<Vec<Item>>>,
+    sort_order: HomeSort,
+) -> Vec<Item> {
+    *review_requests_loading.write() = true;
+    *review_requests_error.write() = None;
+    *open_pull_requests_loading.write() = true;
+    *open_pull_requests_error.write() = None;
+
+    let stored_items = match store.load_items().await {
+        Ok(items) => items,
+        Err(err) => {
+            eprintln!("failed to load stored home items: {err:#}");
+            Vec::new()
+        }
+    };
+
+    let mut stored_home_data = HomeData::from_items(stored_items.clone());
+    stored_home_data.sort(sort_order);
+    apply_home_data(
+        stored_home_data,
+        review_requests_loading,
+        review_requests_data,
+        open_pull_requests_loading,
+        open_pull_requests_data,
+    );
+
+    stored_items
+}
+
+async fn refresh_home_data(
+    store: &dyn Store,
+    stored_items: &mut Vec<Item>,
+    mut review_requests_loading: Signal<bool>,
+    mut review_requests_error: Signal<Option<String>>,
+    review_requests_data: Signal<Option<Vec<Item>>>,
+    mut open_pull_requests_loading: Signal<bool>,
+    mut open_pull_requests_error: Signal<Option<String>>,
+    open_pull_requests_data: Signal<Option<Vec<Item>>>,
     sort_order: HomeSort,
 ) {
     *review_requests_loading.write() = true;
@@ -398,29 +456,109 @@ async fn load_home_data(
     let open_pull_requests = client.open_pull_requests_for_user();
     let (review_result, open_result) = join!(review_requests, open_pull_requests);
 
-    match review_result {
+    let mut review_requests_data_value = Vec::new();
+    let review_requests_loaded = match review_result {
         Ok(review_requests) => {
             let mut review_requests = map_review_requests(review_requests);
             sort_review_requests(&mut review_requests, sort_order);
-            *review_requests_data.write() = Some(review_requests);
+            review_requests_data_value = review_requests;
+            true
         }
         Err(err) => {
             *review_requests_error.write() = Some(err.to_string());
+            false
         }
-    }
-    *review_requests_loading.write() = false;
+    };
 
-    match open_result {
+    let mut open_pull_requests_data_value = Vec::new();
+    let open_pull_requests_loaded = match open_result {
         Ok(open_pull_requests) => {
             let mut open_pull_requests = map_open_pull_requests(open_pull_requests);
             sort_open_pull_requests(&mut open_pull_requests, sort_order);
-            *open_pull_requests_data.write() = Some(open_pull_requests);
+            open_pull_requests_data_value = open_pull_requests;
+            true
         }
         Err(err) => {
             *open_pull_requests_error.write() = Some(err.to_string());
+            false
+        }
+    };
+
+    if review_requests_loaded && open_pull_requests_loaded {
+        let fresh_items = combine_home_items_for_storage(
+            review_requests_data_value.clone(),
+            open_pull_requests_data_value.clone(),
+        );
+        if fresh_items != *stored_items {
+            if let Err(err) = store.store_items(fresh_items.clone()).await {
+                eprintln!("failed to persist refreshed home items: {err:#}");
+            } else {
+                *stored_items = fresh_items;
+            }
         }
     }
+
+    apply_home_data(
+        HomeData {
+            review_requests: review_requests_data_value,
+            open_pull_requests: open_pull_requests_data_value,
+        },
+        review_requests_loading,
+        review_requests_data,
+        open_pull_requests_loading,
+        open_pull_requests_data,
+    );
+}
+
+fn apply_home_data(
+    home_data: HomeData,
+    mut review_requests_loading: Signal<bool>,
+    mut review_requests_data: Signal<Option<Vec<Item>>>,
+    mut open_pull_requests_loading: Signal<bool>,
+    mut open_pull_requests_data: Signal<Option<Vec<Item>>>,
+) {
+    *review_requests_data.write() = Some(home_data.review_requests);
+    *review_requests_loading.write() = false;
+    *open_pull_requests_data.write() = Some(home_data.open_pull_requests);
     *open_pull_requests_loading.write() = false;
+}
+
+#[derive(Default)]
+struct HomeData {
+    review_requests: Vec<Item>,
+    open_pull_requests: Vec<Item>,
+}
+
+impl HomeData {
+    fn from_items(items: Vec<Item>) -> Self {
+        let mut home_data = HomeData::default();
+        for item in items {
+            match &item.kind {
+                ItemKind::GithubReviewRequest(_) => {
+                    home_data.review_requests.push(item);
+                }
+                ItemKind::GithubUserPullRequest(_) => {
+                    home_data.open_pull_requests.push(item);
+                }
+            }
+        }
+        home_data
+    }
+
+    fn sort(&mut self, sort_order: HomeSort) {
+        sort_review_requests(&mut self.review_requests, sort_order);
+        sort_open_pull_requests(&mut self.open_pull_requests, sort_order);
+    }
+}
+
+fn combine_home_items_for_storage(
+    mut review_requests: Vec<Item>,
+    mut open_pull_requests: Vec<Item>,
+) -> Vec<Item> {
+    let mut items = Vec::with_capacity(review_requests.len() + open_pull_requests.len());
+    items.append(&mut review_requests);
+    items.append(&mut open_pull_requests);
+    items
 }
 
 fn sort_loaded_home_data(
