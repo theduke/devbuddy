@@ -63,6 +63,12 @@ pub const GITHUB_OPEN_PRS_GRAPHQL: &str = r#"query($query: String!, $after: Stri
         createdAt
         updatedAt
         reviewDecision
+        reviews(last: 20, states: [APPROVED, CHANGES_REQUESTED, COMMENTED]) {
+          nodes {
+            state
+            submittedAt
+          }
+        }
         repository {
           name
           owner {
@@ -75,6 +81,21 @@ pub const GITHUB_OPEN_PRS_GRAPHQL: &str = r#"query($query: String!, $after: Stri
               committedDate
               statusCheckRollup {
                 state
+                contexts(last: 100) {
+                  nodes {
+                    __typename
+                    ... on CheckRun {
+                      status
+                      conclusion
+                      completedAt
+                      startedAt
+                    }
+                    ... on StatusContext {
+                      state
+                      createdAt
+                    }
+                  }
+                }
               }
             }
           }
@@ -125,6 +146,12 @@ pub struct OpenPullRequestSummary {
     pub last_pushed_at: Option<OffsetDateTime>,
     pub review_decision: PullRequestReviewDecision,
     pub ci_status: PullRequestCiStatus,
+    pub last_review_comment_at: Option<OffsetDateTime>,
+    pub last_changes_requested_at: Option<OffsetDateTime>,
+    pub last_approved_at: Option<OffsetDateTime>,
+    pub last_ci_failure_at: Option<OffsetDateTime>,
+    pub last_ci_success_at: Option<OffsetDateTime>,
+    pub last_ci_started_at: Option<OffsetDateTime>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -219,13 +246,14 @@ struct GithubPageInfo {
 struct GithubSearchNode {
     #[serde(rename = "__typename")]
     typename: String,
-    title: String,
-    url: String,
-    number: i64,
-    #[serde(with = "time::serde::rfc3339")]
-    updated_at: OffsetDateTime,
-    repository: GithubRepository,
-    author: GithubPullRequestAuthor,
+    title: Option<String>,
+    url: Option<String>,
+    number: Option<i64>,
+    #[serde(default, with = "time::serde::rfc3339::option")]
+    updated_at: Option<OffsetDateTime>,
+    repository: Option<GithubRepository>,
+    author: Option<GithubPullRequestAuthor>,
+    #[serde(default)]
     timeline_items: GithubTimelineItemConn,
 }
 
@@ -234,27 +262,31 @@ struct GithubSearchNode {
 struct GithubOpenPullRequestsSearchNode {
     #[serde(rename = "__typename")]
     typename: String,
-    title: String,
-    url: String,
-    number: i64,
-    #[serde(with = "time::serde::rfc3339")]
-    created_at: OffsetDateTime,
-    #[serde(with = "time::serde::rfc3339")]
-    updated_at: OffsetDateTime,
-    review_decision: GithubReviewDecision,
-    repository: GithubRepository,
+    title: Option<String>,
+    url: Option<String>,
+    number: Option<i64>,
+    #[serde(default, with = "time::serde::rfc3339::option")]
+    created_at: Option<OffsetDateTime>,
+    #[serde(default, with = "time::serde::rfc3339::option")]
+    updated_at: Option<OffsetDateTime>,
+    review_decision: Option<GithubReviewDecision>,
+    #[serde(default)]
+    reviews: GithubPullRequestReviewConn,
+    repository: Option<GithubRepository>,
+    #[serde(default)]
     commits: GithubPullRequestCommitConn,
 }
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct GithubPullRequestAuthor {
-    login: String,
+    login: Option<String>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Default, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct GithubTimelineItemConn {
+    #[serde(default)]
     nodes: Vec<GithubTimelineItem>,
 }
 
@@ -263,9 +295,9 @@ struct GithubTimelineItemConn {
 struct GithubTimelineItem {
     #[serde(rename = "__typename")]
     typename: String,
-    #[serde(with = "time::serde::rfc3339")]
-    created_at: OffsetDateTime,
-    requested_reviewer: GithubRequestedReviewer,
+    #[serde(default, with = "time::serde::rfc3339::option")]
+    created_at: Option<OffsetDateTime>,
+    requested_reviewer: Option<GithubRequestedReviewer>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -276,30 +308,71 @@ struct GithubRequestedReviewer {
     login: Option<String>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Default, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct GithubPullRequestCommitConn {
+    #[serde(default)]
     nodes: Vec<GithubPullRequestCommitNode>,
+}
+
+#[derive(Debug, Default, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct GithubPullRequestReviewConn {
+    #[serde(default)]
+    nodes: Vec<GithubPullRequestReview>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct GithubPullRequestReview {
+    state: Option<GithubPullRequestReviewState>,
+    #[serde(default, with = "time::serde::rfc3339::option")]
+    submitted_at: Option<OffsetDateTime>,
 }
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct GithubPullRequestCommitNode {
-    commit: GithubCommit,
+    commit: Option<GithubCommit>,
 }
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct GithubCommit {
-    #[serde(with = "time::serde::rfc3339")]
-    committed_date: OffsetDateTime,
+    #[serde(default, with = "time::serde::rfc3339::option")]
+    committed_date: Option<OffsetDateTime>,
     status_check_rollup: Option<GithubStatusCheckRollup>,
+}
+
+#[derive(Debug, Default, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct GithubStatusCheckRollup {
+    state: Option<GithubStatusState>,
+    #[serde(default)]
+    contexts: GithubStatusCheckContextConn,
+}
+
+#[derive(Debug, Default, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct GithubStatusCheckContextConn {
+    #[serde(default)]
+    nodes: Vec<GithubStatusCheckContextNode>,
 }
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct GithubStatusCheckRollup {
-    state: GithubStatusState,
+struct GithubStatusCheckContextNode {
+    #[serde(rename = "__typename")]
+    typename: String,
+    status: Option<GithubCheckStatus>,
+    conclusion: Option<GithubCheckConclusionState>,
+    #[serde(default, with = "time::serde::rfc3339::option")]
+    completed_at: Option<OffsetDateTime>,
+    #[serde(default, with = "time::serde::rfc3339::option")]
+    started_at: Option<OffsetDateTime>,
+    state: Option<GithubStatusState>,
+    #[serde(default, with = "time::serde::rfc3339::option")]
+    created_at: Option<OffsetDateTime>,
 }
 
 #[derive(Debug, Copy, Clone, Deserialize)]
@@ -312,7 +385,7 @@ enum GithubStatusState {
     Success,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Copy, Clone, Deserialize)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 enum GithubReviewDecision {
     Approved,
@@ -320,17 +393,50 @@ enum GithubReviewDecision {
     ReviewRequired,
 }
 
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+enum GithubPullRequestReviewState {
+    Approved,
+    ChangesRequested,
+    Commented,
+}
+
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+enum GithubCheckStatus {
+    Completed,
+    InProgress,
+    Pending,
+    Queued,
+    Requested,
+    Waiting,
+}
+
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+enum GithubCheckConclusionState {
+    ActionRequired,
+    Cancelled,
+    Failure,
+    Neutral,
+    Skipped,
+    Stale,
+    StartupFailure,
+    Success,
+    TimedOut,
+}
+
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct GithubRepository {
-    name: String,
-    owner: GithubRepositoryOwner,
+    name: Option<String>,
+    owner: Option<GithubRepositoryOwner>,
 }
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct GithubRepositoryOwner {
-    login: String,
+    login: Option<String>,
 }
 
 impl GithubClient {
@@ -364,16 +470,44 @@ impl GithubClient {
                     continue;
                 }
 
+                let owner = node
+                    .repository
+                    .as_ref()
+                    .and_then(|repo| repo.owner.as_ref())
+                    .and_then(|owner| owner.login.clone());
+                let repo = node.repository.as_ref().and_then(|repo| repo.name.clone());
+                let author = node.author.as_ref().and_then(|author| author.login.clone());
+                let (
+                    Some(title),
+                    Some(url),
+                    Some(number),
+                    Some(updated_at),
+                    Some(owner),
+                    Some(repo),
+                    Some(author),
+                ) = (
+                    node.title,
+                    node.url,
+                    node.number,
+                    node.updated_at,
+                    owner,
+                    repo,
+                    author,
+                )
+                else {
+                    continue;
+                };
+
                 let requested_at =
                     requested_at_for_viewer(&node.timeline_items.nodes, &page.viewer.login);
                 results.push(PullRequestSummary {
-                    owner: node.repository.owner.login,
-                    repo: node.repository.name,
-                    number: node.number,
-                    title: node.title,
-                    author: node.author.login,
-                    html_url: node.url,
-                    updated_at: node.updated_at,
+                    owner,
+                    repo,
+                    number,
+                    title,
+                    author,
+                    html_url: url,
+                    updated_at,
                     requested_at,
                 });
             }
@@ -422,29 +556,81 @@ impl GithubClient {
                     continue;
                 }
 
+                let owner = node
+                    .repository
+                    .as_ref()
+                    .and_then(|repo| repo.owner.as_ref())
+                    .and_then(|owner| owner.login.clone());
+                let repo = node.repository.as_ref().and_then(|repo| repo.name.clone());
+                let (
+                    Some(title),
+                    Some(url),
+                    Some(number),
+                    Some(opened_at),
+                    Some(owner),
+                    Some(repo),
+                ) = (
+                    node.title,
+                    node.url,
+                    node.number,
+                    node.created_at,
+                    owner,
+                    repo,
+                )
+                else {
+                    continue;
+                };
+
+                let last_review_comment_at =
+                    latest_review_at(&node.reviews.nodes, GithubPullRequestReviewState::Commented);
+                let last_changes_requested_at = latest_review_at(
+                    &node.reviews.nodes,
+                    GithubPullRequestReviewState::ChangesRequested,
+                );
+                let last_approved_at =
+                    latest_review_at(&node.reviews.nodes, GithubPullRequestReviewState::Approved);
                 let last_pushed_at = node
                     .commits
                     .nodes
                     .first()
-                    .map(|node| node.commit.committed_date);
+                    .and_then(|node| node.commit.as_ref())
+                    .and_then(|commit| commit.committed_date);
+                let ci_timestamps = latest_ci_timestamps(
+                    node.commits
+                        .nodes
+                        .first()
+                        .and_then(|node| node.commit.as_ref())
+                        .and_then(|commit| commit.status_check_rollup.as_ref()),
+                );
                 let ci_status = node
                     .commits
                     .nodes
                     .first()
-                    .and_then(|node| node.commit.status_check_rollup.as_ref())
-                    .map(|rollup| rollup.state.into())
+                    .and_then(|node| node.commit.as_ref())
+                    .and_then(|commit| commit.status_check_rollup.as_ref())
+                    .and_then(|rollup| rollup.state)
+                    .map(Into::into)
                     .unwrap_or(PullRequestCiStatus::Unknown);
 
                 results.push(OpenPullRequestSummary {
-                    owner: node.repository.owner.login,
-                    repo: node.repository.name,
-                    number: node.number,
-                    title: node.title,
-                    html_url: node.url,
-                    opened_at: node.created_at,
+                    owner,
+                    repo,
+                    number,
+                    title,
+                    html_url: url,
+                    opened_at,
                     last_pushed_at,
-                    review_decision: node.review_decision.into(),
+                    review_decision: node
+                        .review_decision
+                        .map(Into::into)
+                        .unwrap_or(PullRequestReviewDecision::ReviewRequired),
                     ci_status,
+                    last_review_comment_at,
+                    last_changes_requested_at,
+                    last_approved_at,
+                    last_ci_failure_at: ci_timestamps.failed_at,
+                    last_ci_success_at: ci_timestamps.success_at,
+                    last_ci_started_at: ci_timestamps.started_at,
                 });
             }
 
@@ -515,15 +701,19 @@ fn requested_at_for_viewer(
         if request.typename != "ReviewRequestedEvent" {
             continue;
         }
-        if request.requested_reviewer.typename != "User"
-            || request.requested_reviewer.login.as_deref() != Some(viewer_login)
-        {
+        let Some(reviewer) = request.requested_reviewer.as_ref() else {
+            continue;
+        };
+        let Some(created_at) = request.created_at else {
+            continue;
+        };
+        if reviewer.typename != "User" || reviewer.login.as_deref() != Some(viewer_login) {
             continue;
         }
 
         newest = Some(match newest {
-            Some(current) if current >= request.created_at => current,
-            _ => request.created_at,
+            Some(current) if current >= created_at => current,
+            _ => created_at,
         });
     }
 
@@ -531,7 +721,7 @@ fn requested_at_for_viewer(
         return newest;
     }
 
-    requests.first().map(|request| request.created_at)
+    requests.iter().find_map(|request| request.created_at)
 }
 
 impl From<GithubReviewDecision> for PullRequestReviewDecision {
@@ -541,6 +731,106 @@ impl From<GithubReviewDecision> for PullRequestReviewDecision {
             GithubReviewDecision::ChangesRequested => Self::ChangesRequested,
             GithubReviewDecision::ReviewRequired => Self::ReviewRequired,
         }
+    }
+}
+
+#[derive(Debug, Default, Copy, Clone)]
+struct PullRequestCiTimestamps {
+    failed_at: Option<OffsetDateTime>,
+    success_at: Option<OffsetDateTime>,
+    started_at: Option<OffsetDateTime>,
+}
+
+fn latest_review_at(
+    reviews: &[GithubPullRequestReview],
+    state: GithubPullRequestReviewState,
+) -> Option<OffsetDateTime> {
+    reviews
+        .iter()
+        .filter_map(|review| match (review.state, review.submitted_at) {
+            (Some(review_state), Some(submitted_at)) if review_state == state => Some(submitted_at),
+            _ => None,
+        })
+        .max()
+}
+
+fn latest_ci_timestamps(rollup: Option<&GithubStatusCheckRollup>) -> PullRequestCiTimestamps {
+    let Some(rollup) = rollup else {
+        return PullRequestCiTimestamps::default();
+    };
+
+    let mut timestamps = PullRequestCiTimestamps::default();
+
+    for context in &rollup.contexts.nodes {
+        match context.typename.as_str() {
+            "CheckRun" => {
+                let action_at = context.completed_at.or(context.started_at);
+                match (context.status, context.conclusion) {
+                    (
+                        Some(GithubCheckStatus::Completed),
+                        Some(GithubCheckConclusionState::Success),
+                    ) => {
+                        timestamps.success_at = latest_timestamp(timestamps.success_at, action_at);
+                    }
+                    (
+                        Some(GithubCheckStatus::Completed),
+                        Some(
+                            GithubCheckConclusionState::ActionRequired
+                            | GithubCheckConclusionState::Cancelled
+                            | GithubCheckConclusionState::Failure
+                            | GithubCheckConclusionState::StartupFailure
+                            | GithubCheckConclusionState::TimedOut,
+                        ),
+                    ) => {
+                        timestamps.failed_at = latest_timestamp(timestamps.failed_at, action_at);
+                    }
+                    (
+                        Some(
+                            GithubCheckStatus::InProgress
+                            | GithubCheckStatus::Pending
+                            | GithubCheckStatus::Queued
+                            | GithubCheckStatus::Requested
+                            | GithubCheckStatus::Waiting,
+                        ),
+                        _,
+                    ) => {
+                        timestamps.started_at =
+                            latest_timestamp(timestamps.started_at, context.started_at);
+                    }
+                    _ => {}
+                }
+            }
+            "StatusContext" => match context.state {
+                Some(GithubStatusState::Success) => {
+                    timestamps.success_at =
+                        latest_timestamp(timestamps.success_at, context.created_at);
+                }
+                Some(GithubStatusState::Failure | GithubStatusState::Error) => {
+                    timestamps.failed_at =
+                        latest_timestamp(timestamps.failed_at, context.created_at);
+                }
+                Some(GithubStatusState::Expected | GithubStatusState::Pending) => {
+                    timestamps.started_at =
+                        latest_timestamp(timestamps.started_at, context.created_at);
+                }
+                None => {}
+            },
+            _ => {}
+        }
+    }
+
+    timestamps
+}
+
+fn latest_timestamp(
+    current: Option<OffsetDateTime>,
+    candidate: Option<OffsetDateTime>,
+) -> Option<OffsetDateTime> {
+    match (current, candidate) {
+        (Some(current), Some(candidate)) => Some(current.max(candidate)),
+        (None, Some(candidate)) => Some(candidate),
+        (Some(current), None) => Some(current),
+        (None, None) => None,
     }
 }
 
@@ -633,4 +923,77 @@ pub fn resolve_github_token() -> Result<String> {
 
     #[allow(unreachable_code)]
     Err(anyhow!("github token not found in environment"))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn authored_pr_graphql_response_allows_missing_created_at_in_checkrun_contexts() {
+        let payload = r#"{
+            "data": {
+                "search": {
+                    "nodes": [
+                        {
+                            "__typename": "PullRequest",
+                            "title": "Example PR",
+                            "url": "https://github.com/acme/repo/pull/1",
+                            "number": 1,
+                            "createdAt": "2026-05-07T20:00:33Z",
+                            "updatedAt": "2026-05-08T10:44:59Z",
+                            "reviewDecision": "CHANGES_REQUESTED",
+                            "reviews": {
+                                "nodes": [
+                                    {
+                                        "state": "COMMENTED",
+                                        "submittedAt": "2026-05-08T10:44:59Z"
+                                    }
+                                ]
+                            },
+                            "repository": {
+                                "name": "repo",
+                                "owner": {
+                                    "login": "acme"
+                                }
+                            },
+                            "commits": {
+                                "nodes": [
+                                    {
+                                        "commit": {
+                                            "committedDate": "2026-05-07T20:00:16Z",
+                                            "statusCheckRollup": {
+                                                "state": "SUCCESS",
+                                                "contexts": {
+                                                    "nodes": [
+                                                        {
+                                                            "__typename": "CheckRun",
+                                                            "status": "COMPLETED",
+                                                            "conclusion": "SUCCESS",
+                                                            "completedAt": "2026-05-07T20:00:56Z",
+                                                            "startedAt": "2026-05-07T20:00:43Z"
+                                                        }
+                                                    ]
+                                                }
+                                            }
+                                        }
+                                    }
+                                ]
+                            }
+                        }
+                    ],
+                    "pageInfo": {
+                        "hasNextPage": false,
+                        "endCursor": null
+                    }
+                }
+            },
+            "errors": []
+        }"#;
+
+        let parsed: GithubGraphQLResponse<GithubOpenPullRequestsResponseData> =
+            serde_json::from_str(payload).expect("payload should deserialize");
+        assert_eq!(parsed.data.search.nodes.len(), 1);
+        assert_eq!(parsed.data.search.nodes[0].created_at.is_some(), true);
+    }
 }

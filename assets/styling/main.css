@@ -29,6 +29,28 @@ body {
     background: transparent;
 }
 
+.review-dashboard {
+    display: grid;
+    gap: 1.25rem;
+}
+
+.review-panel {
+    min-width: 0;
+}
+
+.review-list-subtitle {
+    color: #66758a;
+    font-size: 0.9rem;
+    line-height: 1.35;
+}
+
+@media screen and (min-width: 1216px) {
+    .review-dashboard {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        align-items: start;
+    }
+}
+
 @media screen and (max-width: 1023px) {
     .review-container {
         width: 100%;
@@ -96,17 +118,60 @@ body {
     align-items: center;
     justify-content: center;
     padding: 0 0.9rem;
-    border-right: 1px solid rgba(154, 74, 5, 0.18);
-    background: linear-gradient(180deg, #fff7ed 0%, #ffeed8 100%);
+    border-right: 1px solid rgba(17, 38, 74, 0.12);
 }
 
 .review-pr-status-label {
-    color: #9a4a05;
     font-size: 0.72rem;
     font-weight: 700;
     text-transform: uppercase;
     letter-spacing: 0.08em;
     white-space: nowrap;
+}
+
+.review-pr-status-green {
+    background: linear-gradient(180deg, rgba(var(--age-green), 0.16) 0%, rgba(var(--age-green), 0.1) 100%);
+    border-right-color: rgba(var(--age-green), 0.2);
+}
+
+.review-pr-status-yellow {
+    background: linear-gradient(180deg, rgba(var(--age-yellow), 0.18) 0%, rgba(var(--age-yellow), 0.11) 100%);
+    border-right-color: rgba(var(--age-yellow), 0.2);
+}
+
+.review-pr-status-orange {
+    background: linear-gradient(180deg, rgba(var(--age-orange), 0.18) 0%, rgba(var(--age-orange), 0.11) 100%);
+    border-right-color: rgba(var(--age-orange), 0.22);
+}
+
+.review-pr-status-red {
+    background: linear-gradient(180deg, rgba(var(--age-red), 0.18) 0%, rgba(var(--age-red), 0.11) 100%);
+    border-right-color: rgba(var(--age-red), 0.22);
+}
+
+.review-pr-status-unknown {
+    background: linear-gradient(180deg, #f7f9fc 0%, #eef2f7 100%);
+    border-right-color: rgba(17, 38, 74, 0.12);
+}
+
+.review-pr-status-label-green {
+    color: rgb(var(--age-green));
+}
+
+.review-pr-status-label-yellow {
+    color: rgb(var(--age-yellow));
+}
+
+.review-pr-status-label-orange {
+    color: rgb(var(--age-orange));
+}
+
+.review-pr-status-label-red {
+    color: rgb(var(--age-red));
+}
+
+.review-pr-status-label-unknown {
+    color: #536173;
 }
 
 .review-pr-age-section {
@@ -185,6 +250,11 @@ body {
     border-right: 1px solid #d9e5f2;
 }
 
+.review-pr-icons-own {
+    background: linear-gradient(180deg, #f3f0ff 0%, #ebe7ff 100%);
+    border-right-color: #ddd7fb;
+}
+
 .review-pr-icons img {
     display: block;
     opacity: 0.86;
@@ -241,6 +311,13 @@ body {
     line-height: 1.3;
     -webkit-box-orient: vertical;
     -webkit-line-clamp: 2;
+}
+
+.review-pr-subtitle {
+    margin: 0.35rem 0 0;
+    color: #66758a;
+    font-size: 0.8rem;
+    line-height: 1.35;
 }
 
 .review-age {
