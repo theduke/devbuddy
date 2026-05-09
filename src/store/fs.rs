@@ -230,13 +230,13 @@ impl Store for FsStore {
 
 fn default_storage_dir() -> PathBuf {
     platform_data_dir()
-        .unwrap_or_else(|| std::env::temp_dir())
+        .unwrap_or_else(std::env::temp_dir)
         .join(APP_NAME)
 }
 
 fn default_config_dir() -> PathBuf {
     platform_config_dir()
-        .unwrap_or_else(|| std::env::temp_dir())
+        .unwrap_or_else(std::env::temp_dir)
         .join(APP_NAME)
 }
 
