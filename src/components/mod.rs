@@ -3,4 +3,6 @@
 //! component  to be used in our app.
 
 mod hero;
+pub mod item;
+#[allow(unused_imports)]
 pub use hero::Hero;
