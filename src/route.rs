@@ -1,6 +1,6 @@
 use dioxus::prelude::*;
 
-use crate::views::{Blog, Home, Navbar};
+use crate::views::{Blog, Home, Navbar, Settings};
 
 /// The Route enum is used to define the structure of internal routes in our app. All route enums need to derive
 /// the [`Routable`] trait, which provides the necessary methods for the router to work.
@@ -23,4 +23,6 @@ pub enum Route {
         // Fields of the route variant will be passed to the component as props. In this case, the blog component must accept
         // an `id` prop of type `i32`.
         Blog { id: i32 },
+        #[route("/settings")]
+        Settings {},
 }

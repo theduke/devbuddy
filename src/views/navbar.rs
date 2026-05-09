@@ -19,6 +19,12 @@ pub fn Navbar() -> Element {
         "navbar-item"
     };
 
+    let settings_class = if matches!(route, Route::Settings {}) {
+        "navbar-item is-active"
+    } else {
+        "navbar-item"
+    };
+
     rsx! {
         nav {
             class: "navbar is-fixed-top has-shadow is-white",
@@ -68,9 +74,14 @@ pub fn Navbar() -> Element {
 
                     div {
                         class: "navbar-end",
-                        div {
-                            class: "navbar-item",
-                            span { class: "has-text-grey", "GitHub review requests" }
+                        Link {
+                            to: Route::Settings {},
+                            class: settings_class,
+                            title: "Settings",
+                            aria_label: "Settings",
+                            onclick: move |_| menu_open.set(false),
+                            span { class: "icon is-small", "⚙" }
+                            span { class: "is-sr-only", "Settings" }
                         }
                     }
                 }
