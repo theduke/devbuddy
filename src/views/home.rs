@@ -162,6 +162,11 @@ fn PullRequestListHeader(title: String, subtitle: String, count_label: Option<St
 fn ReviewRequestCard(pr: PullRequestSummary) -> Element {
     let repo = format!("{}/{}", pr.owner, pr.repo);
     let number = format!("#{}", pr.number);
+    let subtitle = format!(
+        "Opened {} · Last pushed {}",
+        format_relative_time(pr.opened_at),
+        format_requested_at(pr.last_pushed_at)
+    );
 
     rsx! {
         PullRequestBox {
@@ -170,9 +175,8 @@ fn ReviewRequestCard(pr: PullRequestSummary) -> Element {
             repo,
             number,
             meta_suffix: Some(format!("@{}", pr.author)),
-            subtitle: None,
+            subtitle: Some(subtitle),
             status_label: "NEEDS REVIEW",
-            age_label: "Requested",
             age_value: format_requested_at(pr.requested_at),
             age_tone: age_tone_suffix(pr.requested_at),
             icon_kind: PullRequestIconKind::ReviewRequest,
@@ -200,7 +204,6 @@ fn OpenPullRequestCard(pr: OpenPullRequestSummary) -> Element {
             meta_suffix: None,
             subtitle: Some(subtitle),
             status_label: action.label,
-            age_label: action.age_label,
             age_value: format_requested_at(action.at),
             age_tone: age_tone_suffix(action.at),
             icon_kind: PullRequestIconKind::OwnPullRequest,
@@ -223,16 +226,15 @@ fn PullRequestBox(
     meta_suffix: Option<String>,
     subtitle: Option<String>,
     status_label: &'static str,
-    age_label: &'static str,
     age_value: String,
     age_tone: &'static str,
     icon_kind: PullRequestIconKind,
 ) -> Element {
     let age_class = format!("review-age review-age-{age_tone} has-text-weight-bold");
     let box_tone_class = format!("review-pr-box-{age_tone}");
-    let age_section_class = format!("review-pr-age-section review-pr-age-section-{age_tone}");
-    let status_class = format!("review-pr-status review-pr-status-{age_tone}");
-    let status_label_class = format!("review-pr-status-label review-pr-status-label-{age_tone}");
+    let action_section_class =
+        format!("review-pr-action-section review-pr-action-section-{age_tone}");
+    let action_label_class = format!("review-pr-action-label review-pr-action-label-{age_tone}");
     let icon_class = match icon_kind {
         PullRequestIconKind::ReviewRequest => "review-pr-icons review-pr-icons-review",
         PullRequestIconKind::OwnPullRequest => "review-pr-icons review-pr-icons-own",
@@ -271,9 +273,6 @@ fn PullRequestBox(
                         },
                     }
                 }
-                div { class: "{status_class}",
-                    span { class: "{status_label_class}", "{status_label}" }
-                }
                 div { class: "review-pr-content",
                     div { class: "review-pr-meta-row mb-1",
                         span { class: "review-repo has-text-weight-bold mr-2", "{repo}" }
@@ -287,8 +286,8 @@ fn PullRequestBox(
                         p { class: "review-pr-subtitle", "{subtitle}" }
                     }
                 }
-                div { class: "{age_section_class}",
-                    span { class: "review-pr-age-label-top", "{age_label}" }
+                div { class: "{action_section_class}",
+                    span { class: "{action_label_class}", "{status_label}" }
                     span { class: "{age_class}", "{age_value}" }
                 }
             }
@@ -299,7 +298,6 @@ fn PullRequestBox(
 #[derive(Clone, Copy)]
 struct OpenPullRequestAction {
     label: &'static str,
-    age_label: &'static str,
     at: Option<OffsetDateTime>,
 }
 
@@ -307,7 +305,6 @@ fn derive_open_pull_request_action(pr: &OpenPullRequestSummary) -> OpenPullReque
     if pr.ci_status == PullRequestCiStatus::Failed {
         return OpenPullRequestAction {
             label: "CI FAIL",
-            age_label: "CI failed",
             at: pr
                 .last_ci_failure_at
                 .or(pr.last_pushed_at)
@@ -318,7 +315,6 @@ fn derive_open_pull_request_action(pr: &OpenPullRequestSummary) -> OpenPullReque
     if pr.review_decision == PullRequestReviewDecision::ChangesRequested {
         return OpenPullRequestAction {
             label: "CHANGES REQUESTED",
-            age_label: "Requested",
             at: pr
                 .last_changes_requested_at
                 .or(pr.last_pushed_at)
@@ -329,7 +325,6 @@ fn derive_open_pull_request_action(pr: &OpenPullRequestSummary) -> OpenPullReque
     if pr.last_review_comment_at.is_some() {
         return OpenPullRequestAction {
             label: "REVIEW COMMENTS",
-            age_label: "Commented",
             at: pr
                 .last_review_comment_at
                 .or(pr.last_pushed_at)
@@ -342,7 +337,6 @@ fn derive_open_pull_request_action(pr: &OpenPullRequestSummary) -> OpenPullReque
     {
         return OpenPullRequestAction {
             label: "READY",
-            age_label: "Ready since",
             at: latest_timestamp(pr.last_approved_at, pr.last_ci_success_at)
                 .or(pr.last_pushed_at)
                 .or(Some(pr.opened_at)),
@@ -352,7 +346,6 @@ fn derive_open_pull_request_action(pr: &OpenPullRequestSummary) -> OpenPullReque
     if pr.ci_status == PullRequestCiStatus::InProgress {
         return OpenPullRequestAction {
             label: "CI RUNNING",
-            age_label: "CI started",
             at: pr
                 .last_ci_started_at
                 .or(pr.last_pushed_at)
@@ -362,7 +355,6 @@ fn derive_open_pull_request_action(pr: &OpenPullRequestSummary) -> OpenPullReque
 
     OpenPullRequestAction {
         label: "NEEDS REVIEW",
-        age_label: "Last pushed",
         at: pr.last_pushed_at.or(Some(pr.opened_at)),
     }
 }

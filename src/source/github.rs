@@ -19,8 +19,16 @@ pub const GITHUB_REVIEW_REQUESTED_PRS_GRAPHQL: &str = r#"query($query: String!, 
         title
         url
         number
+              createdAt
         state
         updatedAt
+              commits(last: 1) {
+                nodes {
+                  commit {
+                    committedDate
+                  }
+                }
+              }
         repository {
           name
           owner {
@@ -131,6 +139,8 @@ pub struct PullRequestSummary {
     pub title: String,
     pub author: String,
     pub html_url: String,
+    pub opened_at: OffsetDateTime,
+    pub last_pushed_at: Option<OffsetDateTime>,
     pub updated_at: OffsetDateTime,
     pub requested_at: Option<OffsetDateTime>,
 }
@@ -250,9 +260,13 @@ struct GithubSearchNode {
     url: Option<String>,
     number: Option<i64>,
     #[serde(default, with = "time::serde::rfc3339::option")]
+    created_at: Option<OffsetDateTime>,
+    #[serde(default, with = "time::serde::rfc3339::option")]
     updated_at: Option<OffsetDateTime>,
     repository: Option<GithubRepository>,
     author: Option<GithubPullRequestAuthor>,
+    #[serde(default)]
+    commits: GithubPullRequestCommitConn,
     #[serde(default)]
     timeline_items: GithubTimelineItemConn,
 }
@@ -481,6 +495,7 @@ impl GithubClient {
                     Some(title),
                     Some(url),
                     Some(number),
+                    Some(opened_at),
                     Some(updated_at),
                     Some(owner),
                     Some(repo),
@@ -489,6 +504,7 @@ impl GithubClient {
                     node.title,
                     node.url,
                     node.number,
+                    node.created_at,
                     node.updated_at,
                     owner,
                     repo,
@@ -500,6 +516,12 @@ impl GithubClient {
 
                 let requested_at =
                     requested_at_for_viewer(&node.timeline_items.nodes, &page.viewer.login);
+                let last_pushed_at = node
+                    .commits
+                    .nodes
+                    .first()
+                    .and_then(|node| node.commit.as_ref())
+                    .and_then(|commit| commit.committed_date);
                 results.push(PullRequestSummary {
                     owner,
                     repo,
@@ -507,6 +529,8 @@ impl GithubClient {
                     title,
                     author,
                     html_url: url,
+                    opened_at,
+                    last_pushed_at,
                     updated_at,
                     requested_at,
                 });
