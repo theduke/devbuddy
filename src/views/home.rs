@@ -89,12 +89,20 @@ fn PullRequestCard(pr: PullRequestSummary) -> Element {
                 href: url.clone(),
                 target: "_blank",
                 rel: "noreferrer noopener",
-                class: "is-flex is-flex-wrap-wrap is-align-items-baseline gap-2 has-text-dark mb-2",
-                span { class: "has-text-link has-text-weight-semibold is-size-7 is-uppercase", "{repo}" }
-                span { class: "has-text-grey-light has-text-weight-light", "·" }
-                span { class: "has-text-grey-dark has-text-weight-semibold is-family-monospace", "{number}" }
-                span { class: "has-text-grey-light has-text-weight-light", "·" }
-                span { class: "has-text-weight-semibold is-size-6", "{title}" }
+                class: "is-flex is-align-items-center gap-2 has-text-dark mb-2",
+                img {
+                    src: asset!("/assets/github-mark.svg"),
+                    alt: "GitHub",
+                    width: "20",
+                    height: "20",
+                }
+                div { class: "is-flex is-flex-wrap-wrap is-align-items-baseline gap-2",
+                    span { class: "has-text-link has-text-weight-semibold is-size-7 is-uppercase", "{repo}" }
+                    span { class: "has-text-grey-light has-text-weight-light", "·" }
+                    span { class: "has-text-grey-dark has-text-weight-semibold is-family-monospace", "{number}" }
+                    span { class: "has-text-grey-light has-text-weight-light", "·" }
+                    span { class: "has-text-weight-semibold is-size-6", "{title}" }
+                }
             }
 
             p { class: "",
