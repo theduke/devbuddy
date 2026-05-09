@@ -279,8 +279,8 @@
               export PATH="$HOME/.cargo/bin:$PATH"
               export LD_LIBRARY_PATH="${libPath}:$LD_LIBRARY_PATH"
               DX_VERSION=$(dx --version 2>/dev/null | grep -oP 'dioxus \K[0-9.]+' || echo "0")
-              if [ "$DX_VERSION" != "0.7.7" ]; then
-                echo "  Installing dx 0.7.7..."
+              if [ "$DX_VERSION" != "0.7.9" ]; then
+                echo "  Installing dx 0.7.9..."
                 cargo install dioxus-cli --locked --version "=0.7.6" 2>/dev/null || \
                   cargo install --git https://github.com/DioxusLabs/dioxus dioxus-cli --locked
               fi
