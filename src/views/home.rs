@@ -1,6 +1,9 @@
-use crate::source::github::{
-    GithubClient, OpenPullRequestSummary, PullRequestCiStatus, PullRequestReviewDecision,
-    PullRequestSummary,
+use crate::{
+    source::github::{GithubClient, OpenPullRequestSummary, PullRequestSummary},
+    store::types::{
+        GithubReviewRequestItem, GithubUserPullRequestItem, Item, ItemKind, PullRequestCiStatus,
+        PullRequestReviewDecision,
+    },
 };
 use dioxus::prelude::*;
 use dioxus_bulma::{Color, Container, Hero, HeroSize, Notification, Section, Title, TitleSize};
@@ -49,10 +52,10 @@ impl HomeGrouping {
 pub fn Home() -> Element {
     let review_requests_loading = use_signal(|| true);
     let review_requests_error = use_signal(|| None::<String>);
-    let review_requests_data = use_signal(|| None::<Vec<PullRequestSummary>>);
+    let review_requests_data = use_signal(|| None::<Vec<Item>>);
     let open_pull_requests_loading = use_signal(|| true);
     let open_pull_requests_error = use_signal(|| None::<String>);
-    let open_pull_requests_data = use_signal(|| None::<Vec<OpenPullRequestSummary>>);
+    let open_pull_requests_data = use_signal(|| None::<Vec<Item>>);
     let sort_order = use_signal(|| HomeSort::Newest);
     let grouping = use_signal(|| HomeGrouping::Grouped);
 
@@ -291,7 +294,7 @@ pub fn Home() -> Element {
                                     (_, None, Some(prs)) => rsx! {
                                         div { class: "review-card-stack",
                                             for pr in prs {
-                                                ReviewRequestCard { pr: pr.clone() }
+                                                ReviewRequestCard { item: pr.clone() }
                                             }
                                         }
                                     },
@@ -337,7 +340,7 @@ pub fn Home() -> Element {
                                     (_, None, Some(prs)) => rsx! {
                                         div { class: "review-card-stack",
                                             for pr in prs {
-                                                OpenPullRequestCard { pr: pr.clone() }
+                                                OpenPullRequestCard { item: pr.clone() }
                                             }
                                         }
                                     },
@@ -368,10 +371,10 @@ pub fn Home() -> Element {
 async fn load_home_data(
     mut review_requests_loading: Signal<bool>,
     mut review_requests_error: Signal<Option<String>>,
-    mut review_requests_data: Signal<Option<Vec<PullRequestSummary>>>,
+    mut review_requests_data: Signal<Option<Vec<Item>>>,
     mut open_pull_requests_loading: Signal<bool>,
     mut open_pull_requests_error: Signal<Option<String>>,
-    mut open_pull_requests_data: Signal<Option<Vec<OpenPullRequestSummary>>>,
+    mut open_pull_requests_data: Signal<Option<Vec<Item>>>,
     sort_order: HomeSort,
 ) {
     *review_requests_loading.write() = true;
@@ -396,7 +399,8 @@ async fn load_home_data(
     let (review_result, open_result) = join!(review_requests, open_pull_requests);
 
     match review_result {
-        Ok(mut review_requests) => {
+        Ok(review_requests) => {
+            let mut review_requests = map_review_requests(review_requests);
             sort_review_requests(&mut review_requests, sort_order);
             *review_requests_data.write() = Some(review_requests);
         }
@@ -407,7 +411,8 @@ async fn load_home_data(
     *review_requests_loading.write() = false;
 
     match open_result {
-        Ok(mut open_pull_requests) => {
+        Ok(open_pull_requests) => {
+            let mut open_pull_requests = map_open_pull_requests(open_pull_requests);
             sort_open_pull_requests(&mut open_pull_requests, sort_order);
             *open_pull_requests_data.write() = Some(open_pull_requests);
         }
@@ -419,8 +424,8 @@ async fn load_home_data(
 }
 
 fn sort_loaded_home_data(
-    mut review_requests_data: Signal<Option<Vec<PullRequestSummary>>>,
-    mut open_pull_requests_data: Signal<Option<Vec<OpenPullRequestSummary>>>,
+    mut review_requests_data: Signal<Option<Vec<Item>>>,
+    mut open_pull_requests_data: Signal<Option<Vec<Item>>>,
     sort_order: HomeSort,
 ) {
     if let Some(review_requests) = review_requests_data.write().as_mut() {
@@ -432,36 +437,46 @@ fn sort_loaded_home_data(
     }
 }
 
-fn sort_review_requests(prs: &mut Vec<PullRequestSummary>, sort_order: HomeSort) {
+fn sort_review_requests(prs: &mut Vec<Item>, sort_order: HomeSort) {
     prs.sort_by(|a, b| match sort_order {
-        HomeSort::Oldest => match (a.requested_at, b.requested_at) {
+        HomeSort::Oldest => match (review_request_sort_time(a), review_request_sort_time(b)) {
             (Some(a), Some(b)) => a.cmp(&b),
             (Some(_), None) => std::cmp::Ordering::Less,
             (None, Some(_)) => std::cmp::Ordering::Greater,
-            (None, None) => a.updated_at.cmp(&b.updated_at),
+            (None, None) => review_request_fallback_time(a).cmp(&review_request_fallback_time(b)),
         },
-        HomeSort::Newest => match (a.requested_at, b.requested_at) {
+        HomeSort::Newest => match (review_request_sort_time(a), review_request_sort_time(b)) {
             (Some(a), Some(b)) => b.cmp(&a),
             (Some(_), None) => std::cmp::Ordering::Less,
             (None, Some(_)) => std::cmp::Ordering::Greater,
-            (None, None) => b.updated_at.cmp(&a.updated_at),
+            (None, None) => review_request_fallback_time(b).cmp(&review_request_fallback_time(a)),
         },
     });
 }
 
-fn sort_open_pull_requests(prs: &mut Vec<OpenPullRequestSummary>, sort_order: HomeSort) {
+fn sort_open_pull_requests(prs: &mut Vec<Item>, sort_order: HomeSort) {
     prs.sort_by(|a, b| match sort_order {
-        HomeSort::Oldest => match (a.last_pushed_at, b.last_pushed_at) {
+        HomeSort::Oldest => match (
+            open_pull_request_sort_time(a),
+            open_pull_request_sort_time(b),
+        ) {
             (Some(a), Some(b)) => a.cmp(&b),
             (Some(_), None) => std::cmp::Ordering::Less,
             (None, Some(_)) => std::cmp::Ordering::Greater,
-            (None, None) => a.opened_at.cmp(&b.opened_at),
+            (None, None) => {
+                open_pull_request_fallback_time(a).cmp(&open_pull_request_fallback_time(b))
+            }
         },
-        HomeSort::Newest => match (a.last_pushed_at, b.last_pushed_at) {
+        HomeSort::Newest => match (
+            open_pull_request_sort_time(a),
+            open_pull_request_sort_time(b),
+        ) {
             (Some(a), Some(b)) => b.cmp(&a),
             (Some(_), None) => std::cmp::Ordering::Less,
             (None, Some(_)) => std::cmp::Ordering::Greater,
-            (None, None) => b.opened_at.cmp(&a.opened_at),
+            (None, None) => {
+                open_pull_request_fallback_time(b).cmp(&open_pull_request_fallback_time(a))
+            }
         },
     });
 }
@@ -491,20 +506,14 @@ fn PullRequestListHeader(title: String, subtitle: String, count_label: Option<St
     }
 }
 
-#[derive(Clone, PartialEq)]
-enum HomeFeedItem {
-    ReviewRequest(PullRequestSummary),
-    OpenPullRequest(OpenPullRequestSummary),
-}
-
 #[component]
 fn FlatPullRequestList(
     review_requests_loading: bool,
     review_requests_error: Option<String>,
-    review_requests_data: Option<Vec<PullRequestSummary>>,
+    review_requests_data: Option<Vec<Item>>,
     open_pull_requests_loading: bool,
     open_pull_requests_error: Option<String>,
-    open_pull_requests_data: Option<Vec<OpenPullRequestSummary>>,
+    open_pull_requests_data: Option<Vec<Item>>,
     sort_order: HomeSort,
 ) -> Element {
     let review_requests = review_requests_data.unwrap_or_default();
@@ -562,34 +571,30 @@ fn FlatPullRequestList(
 }
 
 #[component]
-fn HomeFeedCard(item: HomeFeedItem) -> Element {
-    match item {
-        HomeFeedItem::ReviewRequest(pr) => rsx! {
-            ReviewRequestCard { pr }
+fn HomeFeedCard(item: Item) -> Element {
+    match &item.kind {
+        ItemKind::GithubReviewRequest(_) => rsx! {
+            ReviewRequestCard { item: item.clone() }
         },
-        HomeFeedItem::OpenPullRequest(pr) => rsx! {
-            OpenPullRequestCard { pr }
+        ItemKind::GithubUserPullRequest(_) => rsx! {
+            OpenPullRequestCard { item: item.clone() }
         },
     }
 }
 
 fn combine_home_feed_items(
-    review_requests: Vec<PullRequestSummary>,
-    open_pull_requests: Vec<OpenPullRequestSummary>,
+    review_requests: Vec<Item>,
+    open_pull_requests: Vec<Item>,
     sort_order: HomeSort,
-) -> Vec<HomeFeedItem> {
+) -> Vec<Item> {
     let mut items = Vec::with_capacity(review_requests.len() + open_pull_requests.len());
-    items.extend(review_requests.into_iter().map(HomeFeedItem::ReviewRequest));
-    items.extend(
-        open_pull_requests
-            .into_iter()
-            .map(HomeFeedItem::OpenPullRequest),
-    );
+    items.extend(review_requests);
+    items.extend(open_pull_requests);
     items.sort_by(|a, b| compare_home_feed_items(a, b, sort_order));
     items
 }
 
-fn compare_home_feed_items(a: &HomeFeedItem, b: &HomeFeedItem, sort_order: HomeSort) -> Ordering {
+fn compare_home_feed_items(a: &Item, b: &Item, sort_order: HomeSort) -> Ordering {
     match sort_order {
         HomeSort::Oldest => match (feed_item_sort_time(a), feed_item_sort_time(b)) {
             (Some(a), Some(b)) => a.cmp(&b),
@@ -606,22 +611,41 @@ fn compare_home_feed_items(a: &HomeFeedItem, b: &HomeFeedItem, sort_order: HomeS
     }
 }
 
-fn feed_item_sort_time(item: &HomeFeedItem) -> Option<OffsetDateTime> {
+fn feed_item_sort_time(item: &Item) -> Option<OffsetDateTime> {
     match item {
-        HomeFeedItem::ReviewRequest(pr) => pr.requested_at,
-        HomeFeedItem::OpenPullRequest(pr) => pr.last_pushed_at,
+        Item {
+            kind: ItemKind::GithubReviewRequest(pr),
+            ..
+        } => pr.requested_at,
+        Item {
+            kind: ItemKind::GithubUserPullRequest(pr),
+            ..
+        } => pr.last_pushed_at,
     }
 }
 
-fn feed_item_fallback_time(item: &HomeFeedItem) -> OffsetDateTime {
+fn feed_item_fallback_time(item: &Item) -> OffsetDateTime {
     match item {
-        HomeFeedItem::ReviewRequest(pr) => pr.updated_at,
-        HomeFeedItem::OpenPullRequest(pr) => pr.opened_at,
+        Item {
+            kind: ItemKind::GithubReviewRequest(pr),
+            ..
+        } => pr.updated_at,
+        Item {
+            kind: ItemKind::GithubUserPullRequest(pr),
+            ..
+        } => pr.opened_at,
     }
 }
 
 #[component]
-fn ReviewRequestCard(pr: PullRequestSummary) -> Element {
+fn ReviewRequestCard(item: Item) -> Element {
+    let Item {
+        kind: ItemKind::GithubReviewRequest(pr),
+        ..
+    } = item
+    else {
+        unreachable!("review request card received non-review item");
+    };
     let repo = format!("{}/{}", pr.owner, pr.repo);
     let number = format!("#{}", pr.number);
     let subtitle = format!(
@@ -647,7 +671,14 @@ fn ReviewRequestCard(pr: PullRequestSummary) -> Element {
 }
 
 #[component]
-fn OpenPullRequestCard(pr: OpenPullRequestSummary) -> Element {
+fn OpenPullRequestCard(item: Item) -> Element {
+    let Item {
+        kind: ItemKind::GithubUserPullRequest(pr),
+        ..
+    } = item
+    else {
+        unreachable!("open pull request card received non-open item");
+    };
     let action = derive_open_pull_request_action(&pr);
     let repo = format!("{}/{}", pr.owner, pr.repo);
     let number = format!("#{}", pr.number);
@@ -763,7 +794,7 @@ struct OpenPullRequestAction {
     at: Option<OffsetDateTime>,
 }
 
-fn derive_open_pull_request_action(pr: &OpenPullRequestSummary) -> OpenPullRequestAction {
+fn derive_open_pull_request_action(pr: &GithubUserPullRequestItem) -> OpenPullRequestAction {
     if pr.ci_status == PullRequestCiStatus::Failed {
         return OpenPullRequestAction {
             label: "CI FAIL",
@@ -818,6 +849,110 @@ fn derive_open_pull_request_action(pr: &OpenPullRequestSummary) -> OpenPullReque
     OpenPullRequestAction {
         label: "NEEDS REVIEW",
         at: pr.last_pushed_at.or(Some(pr.opened_at)),
+    }
+}
+
+fn map_review_requests(review_requests: Vec<PullRequestSummary>) -> Vec<Item> {
+    let retrieved_at = OffsetDateTime::now_utc();
+    review_requests
+        .into_iter()
+        .map(|pr| Item {
+            kind: ItemKind::GithubReviewRequest(GithubReviewRequestItem {
+                owner: pr.owner,
+                repo: pr.repo,
+                number: pr.number,
+                title: pr.title,
+                author: pr.author,
+                html_url: pr.html_url,
+                opened_at: pr.opened_at,
+                last_pushed_at: pr.last_pushed_at,
+                updated_at: pr.updated_at,
+                requested_at: pr.requested_at,
+            }),
+            retrieved_at,
+            ignore: false,
+            ignore_until: None,
+        })
+        .collect()
+}
+
+fn map_open_pull_requests(open_pull_requests: Vec<OpenPullRequestSummary>) -> Vec<Item> {
+    let retrieved_at = OffsetDateTime::now_utc();
+    open_pull_requests
+        .into_iter()
+        .map(|pr| Item {
+            kind: ItemKind::GithubUserPullRequest(GithubUserPullRequestItem {
+                owner: pr.owner,
+                repo: pr.repo,
+                number: pr.number,
+                title: pr.title,
+                html_url: pr.html_url,
+                opened_at: pr.opened_at,
+                last_pushed_at: pr.last_pushed_at,
+                review_decision: match pr.review_decision {
+                    crate::source::github::PullRequestReviewDecision::Approved => {
+                        PullRequestReviewDecision::Approved
+                    }
+                    crate::source::github::PullRequestReviewDecision::ChangesRequested => {
+                        PullRequestReviewDecision::ChangesRequested
+                    }
+                    crate::source::github::PullRequestReviewDecision::ReviewRequired => {
+                        PullRequestReviewDecision::ReviewRequired
+                    }
+                },
+                ci_status: match pr.ci_status {
+                    crate::source::github::PullRequestCiStatus::Failed => {
+                        PullRequestCiStatus::Failed
+                    }
+                    crate::source::github::PullRequestCiStatus::InProgress => {
+                        PullRequestCiStatus::InProgress
+                    }
+                    crate::source::github::PullRequestCiStatus::Success => {
+                        PullRequestCiStatus::Success
+                    }
+                    crate::source::github::PullRequestCiStatus::Unknown => {
+                        PullRequestCiStatus::Unknown
+                    }
+                },
+                last_review_comment_at: pr.last_review_comment_at,
+                last_changes_requested_at: pr.last_changes_requested_at,
+                last_approved_at: pr.last_approved_at,
+                last_ci_failure_at: pr.last_ci_failure_at,
+                last_ci_success_at: pr.last_ci_success_at,
+                last_ci_started_at: pr.last_ci_started_at,
+            }),
+            retrieved_at,
+            ignore: false,
+            ignore_until: None,
+        })
+        .collect()
+}
+
+fn review_request_sort_time(item: &Item) -> Option<OffsetDateTime> {
+    match &item.kind {
+        ItemKind::GithubReviewRequest(pr) => pr.requested_at,
+        ItemKind::GithubUserPullRequest(_) => None,
+    }
+}
+
+fn review_request_fallback_time(item: &Item) -> OffsetDateTime {
+    match &item.kind {
+        ItemKind::GithubReviewRequest(pr) => pr.updated_at,
+        ItemKind::GithubUserPullRequest(_) => item.retrieved_at,
+    }
+}
+
+fn open_pull_request_sort_time(item: &Item) -> Option<OffsetDateTime> {
+    match &item.kind {
+        ItemKind::GithubReviewRequest(_) => None,
+        ItemKind::GithubUserPullRequest(pr) => pr.last_pushed_at,
+    }
+}
+
+fn open_pull_request_fallback_time(item: &Item) -> OffsetDateTime {
+    match &item.kind {
+        ItemKind::GithubReviewRequest(_) => item.retrieved_at,
+        ItemKind::GithubUserPullRequest(pr) => pr.opened_at,
     }
 }
 
