@@ -31,6 +31,7 @@ pub struct NotifierSupport {
     pub dismissals: bool,
 }
 
+#[allow(dead_code)]
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum NotificationEvent {
     Sent,
