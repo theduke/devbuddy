@@ -99,7 +99,7 @@ Repeatedly spawn subagents until they report that no more work is available.
       eg by returning a NotifierSupport struct with bool fields for various systems
 
 
-- [ ] basic pr notificat
+- [x] basic pr notificat
 
 - [ ] better github pr CI run notifications
       for the active PR CI runs tracked in home.rs, implement a notification mechanism
