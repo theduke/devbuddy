@@ -1,0 +1,3 @@
+DONE Extend views/settings.rs page with a form to configure a custom github token
+Changed: src/components/github_config_form.rs, src/components/mod.rs, src/views/settings.rs, docs/TODO.md
+Validation: cargo check --quiet --message-format=short; cargo fmt

@@ -1,3 +1,4 @@
+use crate::components::github_config_form::GithubConfigForm;
 use crate::source::github::{resolve_github_token_with_source, GithubTokenSource};
 use crate::store::types::Config;
 use crate::store::use_store;
@@ -52,6 +53,8 @@ pub fn Settings() -> Element {
                         "{github_token_source}"
                     }
                 }
+
+                GithubConfigForm {}
             }
         }
     }

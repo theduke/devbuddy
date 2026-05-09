@@ -50,7 +50,7 @@ Repeatedly spawn subagents until they report that no more work is available.
 - [x] extend the src/source/github.rs client with a simple method to validate
       the active token, eg by retrieving basic user context and returning it.
 
-- [ ] Extend views/settings.rs page with a form to configure a custom github token
+- [x] Extend views/settings.rs page with a form to configure a custom github token
       place form in a new src/components/github_config_form.rs and use in settings
       view. must persist config through the store!
       use the use_store() helper to retrieve the store!
