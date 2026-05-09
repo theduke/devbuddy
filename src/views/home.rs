@@ -5,14 +5,14 @@ use crate::{
         GithubReviewRequestItem, GithubUserPullRequestItem, Item, ItemKind, PullRequestCiStatus,
         PullRequestReviewDecision,
     },
-    store::{FsStore, Store},
+    store::{use_store, Store},
 };
 use dioxus::prelude::*;
 use dioxus_bulma::{Color, Container, Hero, HeroSize, Notification, Section, Title, TitleSize};
 use dioxus_sdk_notification::Notification as DesktopNotification;
 use futures::{join, StreamExt};
-use std::{cmp::Ordering, time::Duration};
-use std::{collections::BTreeMap, sync::Arc};
+use std::collections::BTreeMap;
+use std::{cmp::Ordering, sync::Arc, time::Duration};
 use time::OffsetDateTime;
 
 #[derive(Clone, Copy)]
@@ -64,7 +64,7 @@ pub fn Home() -> Element {
     let open_pull_requests_data = use_signal(|| None::<Vec<Item>>);
     let sort_order = use_signal(|| HomeSort::Newest);
     let grouping = use_signal(|| HomeGrouping::Grouped);
-    let store: Arc<dyn Store> = Arc::new(FsStore::new(None));
+    let store = use_store();
 
     let refresh = use_coroutine(move |mut rx| {
         let store = Arc::clone(&store);

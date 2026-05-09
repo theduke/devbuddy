@@ -30,7 +30,7 @@ Repeatedly spawn subagents until they report that no more work is available.
       Should be used at startup in github client construction if specified.
       if not specified, should use auto-detection as currently done
 
-- [ ] improve store sharing:
+- [x] improve store sharing:
       currently home.rs constructs a store.
       instead, the store should be initialized in main.rs and shared with
       the whole app through the dioxus context system 

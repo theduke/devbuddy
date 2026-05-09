@@ -2,10 +2,18 @@ pub mod fs;
 pub mod types;
 
 use async_trait::async_trait;
+use dioxus::prelude::*;
+use std::sync::Arc;
 
 #[allow(unused_imports)]
 pub use fs::FsStore;
 pub use types::{Config, Item};
+
+pub type DynStore = Arc<dyn Store>;
+
+pub fn use_store() -> DynStore {
+    use_context::<DynStore>()
+}
 
 #[allow(dead_code)]
 #[async_trait]
