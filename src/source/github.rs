@@ -7,6 +7,7 @@ use time::OffsetDateTime;
 
 pub const GITHUB_API_BASE_URL: &str = "https://api.github.com";
 pub const GITHUB_REVIEW_REQUESTED_PRS_QUERY: &str = "is:pr review-requested:@me state:open";
+pub const GITHUB_OPEN_PRS_QUERY: &str = "is:pr author:@me state:open";
 pub const GITHUB_REVIEW_REQUESTED_PRS_GRAPHQL: &str = r#"query($query: String!, $after: String) {
   viewer {
     login
@@ -51,6 +52,41 @@ pub const GITHUB_REVIEW_REQUESTED_PRS_GRAPHQL: &str = r#"query($query: String!, 
     }
   }
 }"#;
+pub const GITHUB_OPEN_PRS_GRAPHQL: &str = r#"query($query: String!, $after: String) {
+  search(query: $query, type: ISSUE, first: 100, after: $after) {
+    nodes {
+      __typename
+      ... on PullRequest {
+        title
+        url
+        number
+        createdAt
+        updatedAt
+        reviewDecision
+        repository {
+          name
+          owner {
+            login
+          }
+        }
+        commits(last: 1) {
+          nodes {
+            commit {
+              committedDate
+              statusCheckRollup {
+                state
+              }
+            }
+          }
+        }
+      }
+    }
+    pageInfo {
+      hasNextPage
+      endCursor
+    }
+  }
+}"#;
 
 pub const GITHUB_TOKEN_ENV_VARS: &[&str] = &[
     "GITHUB_TOKEN",
@@ -78,6 +114,34 @@ pub struct PullRequestSummary {
     pub requested_at: Option<OffsetDateTime>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct OpenPullRequestSummary {
+    pub owner: String,
+    pub repo: String,
+    pub number: i64,
+    pub title: String,
+    pub html_url: String,
+    pub opened_at: OffsetDateTime,
+    pub last_pushed_at: Option<OffsetDateTime>,
+    pub review_decision: PullRequestReviewDecision,
+    pub ci_status: PullRequestCiStatus,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PullRequestReviewDecision {
+    Approved,
+    ChangesRequested,
+    ReviewRequired,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PullRequestCiStatus {
+    Success,
+    Failed,
+    InProgress,
+    Unknown,
+}
+
 #[derive(Debug, Serialize)]
 struct GithubGraphQLRequest<V> {
     query: String,
@@ -86,6 +150,13 @@ struct GithubGraphQLRequest<V> {
 
 #[derive(Debug, Serialize)]
 struct GithubReviewRequestedPRsVariables {
+    query: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    after: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+struct GithubOpenPullRequestsVariables {
     query: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     after: Option<String>,
@@ -112,6 +183,12 @@ struct GithubGraphQLResponseData {
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
+struct GithubOpenPullRequestsResponseData {
+    search: GithubOpenPullRequestsSearchResult,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
 struct GithubViewer {
     login: String,
 }
@@ -120,6 +197,13 @@ struct GithubViewer {
 #[serde(rename_all = "camelCase")]
 struct GithubSearchResult {
     nodes: Vec<GithubSearchNode>,
+    page_info: GithubPageInfo,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct GithubOpenPullRequestsSearchResult {
+    nodes: Vec<GithubOpenPullRequestsSearchNode>,
     page_info: GithubPageInfo,
 }
 
@@ -143,6 +227,23 @@ struct GithubSearchNode {
     repository: GithubRepository,
     author: GithubPullRequestAuthor,
     timeline_items: GithubTimelineItemConn,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct GithubOpenPullRequestsSearchNode {
+    #[serde(rename = "__typename")]
+    typename: String,
+    title: String,
+    url: String,
+    number: i64,
+    #[serde(with = "time::serde::rfc3339")]
+    created_at: OffsetDateTime,
+    #[serde(with = "time::serde::rfc3339")]
+    updated_at: OffsetDateTime,
+    review_decision: GithubReviewDecision,
+    repository: GithubRepository,
+    commits: GithubPullRequestCommitConn,
 }
 
 #[derive(Debug, Deserialize)]
@@ -173,6 +274,50 @@ struct GithubRequestedReviewer {
     #[serde(rename = "__typename")]
     typename: String,
     login: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct GithubPullRequestCommitConn {
+    nodes: Vec<GithubPullRequestCommitNode>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct GithubPullRequestCommitNode {
+    commit: GithubCommit,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct GithubCommit {
+    #[serde(with = "time::serde::rfc3339")]
+    committed_date: OffsetDateTime,
+    status_check_rollup: Option<GithubStatusCheckRollup>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct GithubStatusCheckRollup {
+    state: GithubStatusState,
+}
+
+#[derive(Debug, Copy, Clone, Deserialize)]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+enum GithubStatusState {
+    Expected,
+    Error,
+    Failure,
+    Pending,
+    Success,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+enum GithubReviewDecision {
+    Approved,
+    ChangesRequested,
+    ReviewRequired,
 }
 
 #[derive(Debug, Deserialize)]
@@ -261,6 +406,68 @@ impl GithubClient {
         Ok(results)
     }
 
+    pub async fn open_pull_requests_for_user(&self) -> Result<Vec<OpenPullRequestSummary>> {
+        if self.token.trim().is_empty() {
+            return Err(anyhow!("github token is empty"));
+        }
+
+        let mut results = Vec::new();
+        let mut after: Option<String> = None;
+
+        loop {
+            let page = self.search_open_pull_requests(after.clone()).await?;
+
+            for node in page.search.nodes {
+                if node.typename != "PullRequest" {
+                    continue;
+                }
+
+                let last_pushed_at = node
+                    .commits
+                    .nodes
+                    .first()
+                    .map(|node| node.commit.committed_date);
+                let ci_status = node
+                    .commits
+                    .nodes
+                    .first()
+                    .and_then(|node| node.commit.status_check_rollup.as_ref())
+                    .map(|rollup| rollup.state.into())
+                    .unwrap_or(PullRequestCiStatus::Unknown);
+
+                results.push(OpenPullRequestSummary {
+                    owner: node.repository.owner.login,
+                    repo: node.repository.name,
+                    number: node.number,
+                    title: node.title,
+                    html_url: node.url,
+                    opened_at: node.created_at,
+                    last_pushed_at,
+                    review_decision: node.review_decision.into(),
+                    ci_status,
+                });
+            }
+
+            if !page.search.page_info.has_next_page {
+                break;
+            }
+
+            match page.search.page_info.end_cursor {
+                Some(cursor) if !cursor.is_empty() => after = Some(cursor),
+                _ => break,
+            }
+        }
+
+        results.sort_by(|a, b| match (a.last_pushed_at, b.last_pushed_at) {
+            (Some(a), Some(b)) => b.cmp(&a),
+            (Some(_), None) => std::cmp::Ordering::Less,
+            (None, Some(_)) => std::cmp::Ordering::Greater,
+            (None, None) => b.opened_at.cmp(&a.opened_at),
+        });
+
+        Ok(results)
+    }
+
     async fn search_review_requested_prs(
         &self,
         after: Option<String>,
@@ -274,6 +481,24 @@ impl GithubClient {
             &self.base_url,
             &self.token,
             GITHUB_REVIEW_REQUESTED_PRS_GRAPHQL,
+            variables,
+        )
+        .await
+    }
+
+    async fn search_open_pull_requests(
+        &self,
+        after: Option<String>,
+    ) -> Result<GithubOpenPullRequestsResponseData> {
+        let variables = GithubOpenPullRequestsVariables {
+            query: GITHUB_OPEN_PRS_QUERY.to_string(),
+            after,
+        };
+
+        do_github_graphql_request(
+            &self.base_url,
+            &self.token,
+            GITHUB_OPEN_PRS_GRAPHQL,
             variables,
         )
         .await
@@ -307,6 +532,26 @@ fn requested_at_for_viewer(
     }
 
     requests.first().map(|request| request.created_at)
+}
+
+impl From<GithubReviewDecision> for PullRequestReviewDecision {
+    fn from(value: GithubReviewDecision) -> Self {
+        match value {
+            GithubReviewDecision::Approved => Self::Approved,
+            GithubReviewDecision::ChangesRequested => Self::ChangesRequested,
+            GithubReviewDecision::ReviewRequired => Self::ReviewRequired,
+        }
+    }
+}
+
+impl From<GithubStatusState> for PullRequestCiStatus {
+    fn from(value: GithubStatusState) -> Self {
+        match value {
+            GithubStatusState::Success => Self::Success,
+            GithubStatusState::Failure | GithubStatusState::Error => Self::Failed,
+            GithubStatusState::Pending | GithubStatusState::Expected => Self::InProgress,
+        }
+    }
 }
 
 async fn execute_github_request(req: http::Request<String>) -> Result<http::Response<Vec<u8>>> {
