@@ -1,4 +1,4 @@
-#[cfg(feature = "desktop")]
+#[cfg(any(feature = "desktop", feature = "native"))]
 pub async fn execute_request(
     req: http::Request<String>,
 ) -> Result<http::Response<Vec<u8>>, anyhow::Error> {
@@ -23,7 +23,10 @@ pub async fn execute_request(
     rx.await?
 }
 
-#[cfg(not(feature = "desktop"))]
-pub fn execute_request(req: http::Request) -> http::Response {
+#[cfg(not(any(feature = "desktop", feature = "native")))]
+pub async fn execute_request(
+    req: http::Request<String>,
+) -> Result<http::Response<Vec<u8>>, anyhow::Error> {
+    let _ = req;
     panic!("web requests not supported")
 }
