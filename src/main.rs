@@ -2,6 +2,7 @@
 
 mod route;
 mod source;
+mod store;
 mod views;
 
 use dioxus::prelude::*;
