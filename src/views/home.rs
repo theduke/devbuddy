@@ -140,7 +140,15 @@ pub fn Home() -> Element {
                                     },
                                     disabled: is_loading,
                                     onclick: move |_| refresh.send(HomeCommand::Sort(HomeSort::Oldest)),
-                                    "{HomeSort::Oldest.label()}"
+                                    span { class: "icon is-small mr-1",
+                                        img {
+                                            src: asset!("/assets/up-arrow.svg"),
+                                            alt: "",
+                                            width: "16",
+                                            height: "16",
+                                        }
+                                    }
+                                    span { "{HomeSort::Oldest.label()}" }
                                 }
                                 button {
                                     class: if sort_order_value == HomeSort::Newest {
@@ -150,7 +158,15 @@ pub fn Home() -> Element {
                                     },
                                     disabled: is_loading,
                                     onclick: move |_| refresh.send(HomeCommand::Sort(HomeSort::Newest)),
-                                    "{HomeSort::Newest.label()}"
+                                    span { class: "icon is-small mr-1",
+                                        img {
+                                            src: asset!("/assets/down-arrow.svg"),
+                                            alt: "",
+                                            width: "16",
+                                            height: "16",
+                                        }
+                                    }
+                                    span { "{HomeSort::Newest.label()}" }
                                 }
                             }
                             button {
@@ -448,7 +464,7 @@ fn OpenPullRequestCard(pr: OpenPullRequestSummary) -> Element {
             title: pr.title,
             repo,
             number,
-            meta_suffix: None,
+            meta_suffix: Some("@me".to_string()),
             subtitle: Some(subtitle),
             status_label: action.label,
             age_value: format_requested_at(action.at),
