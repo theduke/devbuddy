@@ -78,6 +78,14 @@ pub fn Home() -> Element {
         let mut grouping = grouping;
 
         async move {
+            let github_token = match store.load_config().await {
+                Ok(config) => config.github_token,
+                Err(err) => {
+                    eprintln!("failed to load github config: {err:#}");
+                    None
+                }
+            };
+
             let mut stored_items = load_stored_home_data(
                 store.as_ref(),
                 review_requests_loading,
@@ -92,6 +100,7 @@ pub fn Home() -> Element {
             let mut last_notified_snapshot = meaningful_home_snapshot(&stored_items);
 
             refresh_home_data(
+                github_token.clone(),
                 store.as_ref(),
                 &mut stored_items,
                 &mut last_notified_snapshot,
@@ -109,6 +118,7 @@ pub fn Home() -> Element {
                 match command {
                     HomeCommand::Refresh => {
                         refresh_home_data(
+                            github_token.clone(),
                             store.as_ref(),
                             &mut stored_items,
                             &mut last_notified_snapshot,
@@ -453,7 +463,15 @@ async fn load_stored_home_data(
     stored_items
 }
 
+fn build_github_client(github_token: Option<String>) -> anyhow::Result<GithubClient> {
+    match github_token {
+        Some(token) => Ok(GithubClient::with_token(token)),
+        None => GithubClient::new(),
+    }
+}
+
 async fn refresh_home_data(
+    github_token: Option<String>,
     store: &dyn Store,
     stored_items: &mut Vec<Item>,
     last_notified_snapshot: &mut HomeSnapshot,
@@ -470,7 +488,7 @@ async fn refresh_home_data(
     *open_pull_requests_loading.write() = true;
     *open_pull_requests_error.write() = None;
 
-    let client = match GithubClient::new() {
+    let client = match build_github_client(github_token) {
         Ok(client) => client,
         Err(err) => {
             let message = err.to_string();

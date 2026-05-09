@@ -22,7 +22,7 @@ Repeatedly spawn subagents until they report that no more work is available.
 - [x] Improve settings gear icon used in navbar, current one sucks.
       Also, settings icon should always be visible, even on mobile bulma layouts
 
-- [ ] Extend src/store/mod.rs trait Store with a config load and write system
+- [x] Extend src/store/mod.rs trait Store with a config load and write system
       Must define a config type in src/store/types.rs
       FS store should store config also in platform compatible dir, like
       .config/devbuddy on linux

@@ -1,6 +1,12 @@
 use serde::{Deserialize, Serialize};
 use time::OffsetDateTime;
 
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Config {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub github_token: Option<String>,
+}
+
 fn is_false(value: &bool) -> bool {
     !*value
 }

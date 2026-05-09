@@ -12,21 +12,33 @@ use super::{Item, Store};
 const APP_NAME: &str = "devbuddy";
 const ITEMS_FILE_NAME: &str = "items.jsonl";
 const ITEMS_TMP_FILE_NAME: &str = "items.jsonl.tmp";
+const CONFIG_FILE_NAME: &str = "config.json";
+const CONFIG_TMP_FILE_NAME: &str = "config.json.tmp";
 
 #[derive(Clone, Debug)]
 pub struct FsStore {
     storage_dir: PathBuf,
+    config_dir: PathBuf,
 }
 
 impl FsStore {
     pub fn new(storage_dir: Option<PathBuf>) -> Self {
+        Self::with_dirs(storage_dir, None)
+    }
+
+    pub fn with_dirs(storage_dir: Option<PathBuf>, config_dir: Option<PathBuf>) -> Self {
         Self {
             storage_dir: storage_dir.unwrap_or_else(default_storage_dir),
+            config_dir: config_dir.unwrap_or_else(default_config_dir),
         }
     }
 
     pub fn storage_dir(&self) -> &Path {
         &self.storage_dir
+    }
+
+    pub fn config_dir(&self) -> &Path {
+        &self.config_dir
     }
 
     fn items_path(&self) -> PathBuf {
@@ -36,10 +48,90 @@ impl FsStore {
     fn temp_items_path(&self) -> PathBuf {
         self.storage_dir.join(ITEMS_TMP_FILE_NAME)
     }
+
+    fn config_path(&self) -> PathBuf {
+        self.config_dir.join(CONFIG_FILE_NAME)
+    }
+
+    fn temp_config_path(&self) -> PathBuf {
+        self.config_dir.join(CONFIG_TMP_FILE_NAME)
+    }
 }
 
 #[async_trait]
 impl Store for FsStore {
+    async fn load_config(&self) -> Result<super::types::Config> {
+        let config_path = self.config_path();
+        let file = match File::open(&config_path) {
+            Ok(file) => file,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                return Ok(super::types::Config::default())
+            }
+            Err(error) => {
+                return Err(error).with_context(|| {
+                    format!("failed to open config file at {}", config_path.display())
+                });
+            }
+        };
+
+        let reader = BufReader::new(file);
+        serde_json::from_reader(reader)
+            .with_context(|| format!("failed to parse config file {}", config_path.display()))
+    }
+
+    async fn store_config(&self, config: super::types::Config) -> Result<()> {
+        fs::create_dir_all(&self.config_dir).with_context(|| {
+            format!(
+                "failed to create config directory {}",
+                self.config_dir.display()
+            )
+        })?;
+
+        let config_path = self.config_path();
+        let temp_path = self.temp_config_path();
+
+        if temp_path.exists() {
+            let _ = fs::remove_file(&temp_path);
+        }
+
+        let mut file = OpenOptions::new()
+            .create(true)
+            .truncate(true)
+            .write(true)
+            .open(&temp_path)
+            .with_context(|| {
+                format!("failed to create temp config file {}", temp_path.display())
+            })?;
+
+        serde_json::to_writer(&mut file, &config)
+            .with_context(|| format!("failed to serialize config for {}", config_path.display()))?;
+        file.write_all(b"\n")
+            .with_context(|| format!("failed to write config to {}", temp_path.display()))?;
+
+        file.sync_all()
+            .with_context(|| format!("failed to flush temp config file {}", temp_path.display()))?;
+        drop(file);
+
+        if config_path.exists() {
+            fs::remove_file(&config_path).with_context(|| {
+                format!(
+                    "failed to clear existing config file {}",
+                    config_path.display()
+                )
+            })?;
+        }
+
+        fs::rename(&temp_path, &config_path).with_context(|| {
+            format!(
+                "failed to replace config file {} with {}",
+                config_path.display(),
+                temp_path.display()
+            )
+        })?;
+
+        Ok(())
+    }
+
     async fn load_items(&self) -> Result<Vec<Item>> {
         let items_path = self.items_path();
         let file = match File::open(&items_path) {
@@ -142,6 +234,12 @@ fn default_storage_dir() -> PathBuf {
         .join(APP_NAME)
 }
 
+fn default_config_dir() -> PathBuf {
+    platform_config_dir()
+        .unwrap_or_else(|| std::env::temp_dir())
+        .join(APP_NAME)
+}
+
 fn platform_data_dir() -> Option<PathBuf> {
     #[cfg(target_os = "linux")]
     {
@@ -174,11 +272,43 @@ fn platform_data_dir() -> Option<PathBuf> {
     }
 }
 
+fn platform_config_dir() -> Option<PathBuf> {
+    #[cfg(target_os = "linux")]
+    {
+        if let Some(dir) = std::env::var_os("XDG_CONFIG_HOME") {
+            return Some(PathBuf::from(dir));
+        }
+
+        if let Some(home) = std::env::var_os("HOME") {
+            return Some(PathBuf::from(home).join(".config"));
+        }
+
+        None
+    }
+
+    #[cfg(target_os = "macos")]
+    {
+        std::env::var_os("HOME")
+            .map(PathBuf::from)
+            .map(|home| home.join("Library/Application Support"))
+    }
+
+    #[cfg(target_os = "windows")]
+    {
+        std::env::var_os("APPDATA").map(PathBuf::from)
+    }
+
+    #[cfg(not(any(target_os = "linux", target_os = "macos", target_os = "windows")))]
+    {
+        None
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::store::types::{
-        GithubReviewRequestItem, GithubUserPullRequestItem, ItemKind, PullRequestCiStatus,
+        Config, GithubReviewRequestItem, GithubUserPullRequestItem, ItemKind, PullRequestCiStatus,
         PullRequestReviewDecision,
     };
     use futures::executor::block_on;
@@ -187,7 +317,10 @@ mod tests {
 
     #[test]
     fn round_trips_items() {
-        let store = FsStore::new(Some(unique_temp_dir()));
+        let base_dir = unique_temp_dir();
+        let storage_dir = base_dir.join("storage");
+        let config_dir = base_dir.join("config");
+        let store = FsStore::with_dirs(Some(storage_dir.clone()), Some(config_dir.clone()));
         let items = vec![
             Item {
                 kind: ItemKind::GithubReviewRequest(GithubReviewRequestItem {
@@ -236,6 +369,27 @@ mod tests {
             assert_eq!(loaded, items);
         });
 
+        let _ = fs::remove_dir_all(store.storage_dir());
+        let _ = fs::remove_dir_all(store.config_dir());
+    }
+
+    #[test]
+    fn round_trips_config() {
+        let base_dir = unique_temp_dir();
+        let storage_dir = base_dir.join("storage");
+        let config_dir = base_dir.join("config");
+        let store = FsStore::with_dirs(Some(storage_dir), Some(config_dir.clone()));
+        let config = Config {
+            github_token: Some("secret-token".to_string()),
+        };
+
+        block_on(async {
+            store.store_config(config.clone()).await.unwrap();
+            let loaded = store.load_config().await.unwrap();
+            assert_eq!(loaded, config);
+        });
+
+        let _ = fs::remove_dir_all(store.config_dir());
         let _ = fs::remove_dir_all(store.storage_dir());
     }
 
