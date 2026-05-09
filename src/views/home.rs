@@ -9,8 +9,8 @@ use crate::{
 use dioxus::prelude::*;
 use dioxus_bulma::{Color, Container, Hero, HeroSize, Notification, Section, Title, TitleSize};
 use futures::{join, StreamExt};
-use std::cmp::Ordering;
 use std::sync::Arc;
+use std::{cmp::Ordering, time::Duration};
 use time::OffsetDateTime;
 
 #[derive(Clone, Copy)]
@@ -19,6 +19,8 @@ enum HomeCommand {
     Sort(HomeSort),
     Grouping(HomeGrouping),
 }
+
+const AUTO_REFRESH_INTERVAL_SECS: u64 = 90;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum HomeSort {
@@ -127,6 +129,19 @@ pub fn Home() -> Element {
         }
     });
 
+    let _auto_refresh = use_future(move || {
+        let refresh = refresh;
+        async move {
+            let mut interval =
+                tokio::time::interval(Duration::from_secs(AUTO_REFRESH_INTERVAL_SECS));
+            interval.tick().await;
+            loop {
+                interval.tick().await;
+                refresh.send(HomeCommand::Refresh);
+            }
+        }
+    });
+
     let review_requests_loading_value = review_requests_loading();
     let review_requests_error_value = review_requests_error();
     let review_requests_data_value = review_requests_data();
@@ -136,6 +151,10 @@ pub fn Home() -> Element {
     let sort_order_value = sort_order();
     let grouping_value = grouping();
     let is_loading = review_requests_loading_value || open_pull_requests_loading_value;
+    let current_data_age_label = current_data_age_label(
+        review_requests_data_value.as_ref(),
+        open_pull_requests_data_value.as_ref(),
+    );
 
     rsx! {
         Hero {
@@ -262,6 +281,11 @@ pub fn Home() -> Element {
                                     }
                                 }
                                 span { class: "is-sr-only", "Refresh" }
+                            }
+                            if let Some(current_data_age_label) = current_data_age_label {
+                                span { class: "ml-3 is-size-7 has-text-grey",
+                                    "{current_data_age_label}"
+                                }
                             }
                         }
                     }
@@ -559,6 +583,25 @@ fn combine_home_items_for_storage(
     items.append(&mut review_requests);
     items.append(&mut open_pull_requests);
     items
+}
+
+fn current_data_age_label(
+    review_requests_data: Option<&Vec<Item>>,
+    open_pull_requests_data: Option<&Vec<Item>>,
+) -> Option<String> {
+    latest_current_data_retrieved_at(review_requests_data, open_pull_requests_data)
+        .map(|retrieved_at| format!("Updated {}", format_relative_time(retrieved_at)))
+}
+
+fn latest_current_data_retrieved_at(
+    review_requests_data: Option<&Vec<Item>>,
+    open_pull_requests_data: Option<&Vec<Item>>,
+) -> Option<OffsetDateTime> {
+    review_requests_data
+        .into_iter()
+        .chain(open_pull_requests_data)
+        .flat_map(|items| items.iter().map(|item| item.retrieved_at))
+        .max_by_key(|retrieved_at| retrieved_at.unix_timestamp())
 }
 
 fn sort_loaded_home_data(
