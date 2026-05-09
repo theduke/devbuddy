@@ -38,8 +38,11 @@ jobs:
       - name: Cache Rust build artifacts
         uses: Swatinem/rust-cache@v2
 
+      - name: Install cargo-binstall
+        uses: cargo-bins/cargo-binstall@main
+
       - name: Install Dioxus CLI
-        run: cargo install dioxus-cli --locked
+        run: cargo binstall dioxus-cli --no-confirm --locked
 
       - name: Install platform dependencies
         shell: bash
