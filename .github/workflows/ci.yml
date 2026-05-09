@@ -65,7 +65,13 @@ jobs:
         run: cargo clippy --all-targets -- -D warnings
 
       - name: Build desktop
-        run: dx build --desktop --release
+        shell: bash
+        run: |
+          if [[ "$RUNNER_OS" == "macOS" ]]; then
+            "$HOME/.cargo/bin/dx" build --desktop --release
+          else
+            dx build --desktop --release
+          fi
 
       - name: Prepare artifact
         shell: bash
