@@ -1083,7 +1083,7 @@ impl From<GithubStatusState> for PullRequestCiStatus {
 }
 
 async fn execute_github_request(req: http::Request<String>) -> Result<http::Response<Vec<u8>>> {
-    return super::http::execute_request(req).await;
+    super::http::execute_request(req).await
 }
 
 async fn do_github_rest_request<T>(base_url: &str, token: &str, path: &str) -> Result<T>
@@ -1277,6 +1277,6 @@ mod tests {
         let parsed: GithubGraphQLResponse<GithubOpenPullRequestsResponseData> =
             serde_json::from_str(payload).expect("payload should deserialize");
         assert_eq!(parsed.data.search.nodes.len(), 1);
-        assert_eq!(parsed.data.search.nodes[0].created_at.is_some(), true);
+        assert!(parsed.data.search.nodes[0].created_at.is_some());
     }
 }

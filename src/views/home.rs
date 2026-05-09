@@ -510,6 +510,7 @@ pub fn Home() -> Element {
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn load_stored_home_data(
     store: &dyn Store,
     mut review_requests_loading: Signal<bool>,
@@ -553,6 +554,7 @@ fn build_github_client(github_token: Option<String>) -> anyhow::Result<GithubCli
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn refresh_home_data(
     github_token: Option<String>,
     store: &dyn Store,
@@ -665,6 +667,7 @@ async fn refresh_home_data(
     .await;
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn refresh_active_ci_runs(
     github_token: Option<String>,
     _store: &dyn Store,
@@ -1085,7 +1088,7 @@ fn sort_loaded_home_data(
     }
 }
 
-fn sort_review_requests(prs: &mut Vec<Item>, sort_order: HomeSort) {
+fn sort_review_requests(prs: &mut [Item], sort_order: HomeSort) {
     prs.sort_by(|a, b| match sort_order {
         HomeSort::Oldest => match (review_request_sort_time(a), review_request_sort_time(b)) {
             (Some(a), Some(b)) => a.cmp(&b),
@@ -1102,7 +1105,7 @@ fn sort_review_requests(prs: &mut Vec<Item>, sort_order: HomeSort) {
     });
 }
 
-fn sort_open_pull_requests(prs: &mut Vec<Item>, sort_order: HomeSort) {
+fn sort_open_pull_requests(prs: &mut [Item], sort_order: HomeSort) {
     prs.sort_by(|a, b| match sort_order {
         HomeSort::Oldest => match (
             open_pull_request_sort_time(a),
