@@ -57,7 +57,7 @@ Repeatedly spawn subagents until they report that no more work is available.
       the form should validate the token using the github client user context
       retrieval, and only persist the new config when token is valid!
 
-- [ ] Extend github client in src/source/github.rs with a method to retrieve
+- [x] Extend github client in src/source/github.rs with a method to retrieve
       status for a specific CI run, want to know number of: total jobs, 
       in progress, failed, succeeded
 

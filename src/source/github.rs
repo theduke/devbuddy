@@ -192,6 +192,14 @@ pub enum PullRequestCiStatus {
     Unknown,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct GithubCiRunStatus {
+    pub total_jobs: usize,
+    pub in_progress_jobs: usize,
+    pub failed_jobs: usize,
+    pub succeeded_jobs: usize,
+}
+
 #[derive(Debug, Serialize)]
 struct GithubGraphQLRequest<V> {
     query: String,
@@ -471,6 +479,45 @@ struct GithubRepository {
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
+struct GithubWorkflowRunJobsResponse {
+    total_count: usize,
+    jobs: Vec<GithubWorkflowRunJob>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct GithubWorkflowRunJob {
+    status: Option<GithubWorkflowRunJobStatus>,
+    conclusion: Option<GithubWorkflowRunJobConclusion>,
+}
+
+#[derive(Debug, Copy, Clone, Deserialize)]
+#[serde(rename_all = "snake_case")]
+enum GithubWorkflowRunJobStatus {
+    Completed,
+    InProgress,
+    Pending,
+    Queued,
+    Requested,
+    Waiting,
+}
+
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "snake_case")]
+enum GithubWorkflowRunJobConclusion {
+    ActionRequired,
+    Cancelled,
+    Failure,
+    Neutral,
+    Skipped,
+    Stale,
+    StartupFailure,
+    Success,
+    TimedOut,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
 struct GithubRepositoryOwner {
     login: Option<String>,
 }
@@ -600,6 +647,85 @@ impl GithubClient {
         .await?;
 
         Ok(response.viewer.login)
+    }
+
+    pub async fn ci_run_status(
+        &self,
+        owner: &str,
+        repo: &str,
+        run_id: i64,
+    ) -> Result<GithubCiRunStatus> {
+        if self.token.trim().is_empty() {
+            return Err(anyhow!("github token is empty"));
+        }
+        if owner.trim().is_empty() {
+            return Err(anyhow!("github owner is empty"));
+        }
+        if repo.trim().is_empty() {
+            return Err(anyhow!("github repo is empty"));
+        }
+
+        let mut status = GithubCiRunStatus::default();
+        let mut page = 1usize;
+
+        loop {
+            let response: GithubWorkflowRunJobsResponse = do_github_rest_request(
+                &self.base_url,
+                &self.token,
+                &format!(
+                    "/repos/{owner}/{repo}/actions/runs/{run_id}/jobs?per_page=100&page={page}"
+                ),
+            )
+            .await?;
+
+            if page == 1 {
+                status.total_jobs = response.total_count;
+            }
+
+            if response.jobs.is_empty() {
+                break;
+            }
+
+            for job in response.jobs {
+                match (job.status, job.conclusion) {
+                    (
+                        Some(GithubWorkflowRunJobStatus::Completed),
+                        Some(
+                            GithubWorkflowRunJobConclusion::Success
+                            | GithubWorkflowRunJobConclusion::Neutral
+                            | GithubWorkflowRunJobConclusion::Skipped,
+                        ),
+                    ) => {
+                        status.succeeded_jobs += 1;
+                    }
+                    (
+                        Some(GithubWorkflowRunJobStatus::Completed),
+                        Some(
+                            GithubWorkflowRunJobConclusion::ActionRequired
+                            | GithubWorkflowRunJobConclusion::Cancelled
+                            | GithubWorkflowRunJobConclusion::Failure
+                            | GithubWorkflowRunJobConclusion::Stale
+                            | GithubWorkflowRunJobConclusion::StartupFailure
+                            | GithubWorkflowRunJobConclusion::TimedOut,
+                        ),
+                    ) => {
+                        status.failed_jobs += 1;
+                    }
+                    _ => {
+                        status.in_progress_jobs += 1;
+                    }
+                }
+            }
+
+            let counted_jobs = status.in_progress_jobs + status.failed_jobs + status.succeeded_jobs;
+            if counted_jobs >= status.total_jobs {
+                break;
+            }
+
+            page += 1;
+        }
+
+        Ok(status)
     }
 
     pub async fn open_pull_requests_for_user(&self) -> Result<Vec<OpenPullRequestSummary>> {
@@ -908,6 +1034,34 @@ impl From<GithubStatusState> for PullRequestCiStatus {
 
 async fn execute_github_request(req: http::Request<String>) -> Result<http::Response<Vec<u8>>> {
     return super::http::execute_request(req).await;
+}
+
+async fn do_github_rest_request<T>(base_url: &str, token: &str, path: &str) -> Result<T>
+where
+    T: for<'de> Deserialize<'de>,
+{
+    let endpoint = format!(
+        "{}/{}",
+        base_url.trim_end_matches('/'),
+        path.trim_start_matches('/')
+    );
+    let request = http::Request::builder()
+        .method(http::Method::GET)
+        .uri(endpoint)
+        .header(http::header::ACCEPT, "application/vnd.github+json")
+        .header(http::header::AUTHORIZATION, format!("Bearer {token}"))
+        .body(String::new())?;
+
+    let response = execute_github_request(request).await?;
+    let status = response.status();
+    let body = response.into_body();
+
+    if !status.is_success() {
+        let body_text = String::from_utf8_lossy(&body).trim().to_string();
+        return Err(anyhow!("github rest request failed: {status}: {body_text}"));
+    }
+
+    Ok(serde_json::from_slice(&body)?)
 }
 
 async fn do_github_graphql_request<T, V>(
