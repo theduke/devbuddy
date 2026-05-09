@@ -764,7 +764,7 @@ impl GithubClient {
             &self.base_url,
             &self.token,
             &format!(
-                "/repos/{owner}/{repo}/actions/runs?branch={}&status=in_progress&per_page=1",
+                "/repos/{owner}/{repo}/actions/runs?branch={}&per_page=1",
                 encode_query_component(head_ref_name)
             ),
         )

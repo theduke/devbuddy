@@ -1,6 +1,6 @@
 use crate::{
     components::item::{format_relative_time, ItemCard},
-    notify::{build_notifier, DynNotifier},
+    notify::{build_notifier, DynNotifier, NotificationOptions},
     source::github::{GithubCiRunStatus, GithubClient, OpenPullRequestSummary, PullRequestSummary},
     store::types::{
         GithubReviewRequestItem, GithubUserPullRequestItem, Item, ItemKind, PullRequestCiStatus,
@@ -72,6 +72,7 @@ pub fn Home() -> Element {
     let active_ci_loading = use_signal(|| true);
     let active_ci_error = use_signal(|| None::<String>);
     let active_ci_data = use_signal(|| None::<Vec<ActiveCiRunSummary>>);
+    let active_ci_notification_statuses = use_signal(BTreeMap::<String, GithubCiRunStatus>::new);
     let sort_order = use_signal(|| HomeSort::Newest);
     let grouping = use_signal(|| HomeGrouping::Grouped);
     let store = use_store();
@@ -129,6 +130,7 @@ pub fn Home() -> Element {
                 active_ci_loading,
                 active_ci_error,
                 active_ci_data,
+                active_ci_notification_statuses,
                 sort_order(),
             )
             .await;
@@ -151,6 +153,7 @@ pub fn Home() -> Element {
                             active_ci_loading,
                             active_ci_error,
                             active_ci_data,
+                            active_ci_notification_statuses,
                             sort_order(),
                         )
                         .await;
@@ -182,10 +185,12 @@ pub fn Home() -> Element {
 
     let _active_ci_refresh = use_future(move || {
         let store = Arc::clone(&active_ci_store);
+        let notifier = Arc::clone(&notifier);
         let open_pull_requests_data = open_pull_requests_data;
         let active_ci_loading = active_ci_loading;
         let active_ci_error = active_ci_error;
         let active_ci_data = active_ci_data;
+        let active_ci_notification_statuses = active_ci_notification_statuses;
         async move {
             let github_token = match store.load_config().await {
                 Ok(config) => config.github_token,
@@ -198,10 +203,12 @@ pub fn Home() -> Element {
             refresh_active_ci_runs(
                 github_token.clone(),
                 store.as_ref(),
+                &notifier,
                 open_pull_requests_data,
                 active_ci_loading,
                 active_ci_error,
                 active_ci_data,
+                active_ci_notification_statuses,
             )
             .await;
 
@@ -213,10 +220,12 @@ pub fn Home() -> Element {
                 refresh_active_ci_runs(
                     github_token.clone(),
                     store.as_ref(),
+                    &notifier,
                     open_pull_requests_data,
                     active_ci_loading,
                     active_ci_error,
                     active_ci_data,
+                    active_ci_notification_statuses,
                 )
                 .await;
             }
@@ -559,6 +568,7 @@ async fn refresh_home_data(
     mut active_ci_loading: Signal<bool>,
     mut active_ci_error: Signal<Option<String>>,
     active_ci_data: Signal<Option<Vec<ActiveCiRunSummary>>>,
+    active_ci_notification_statuses: Signal<BTreeMap<String, GithubCiRunStatus>>,
     sort_order: HomeSort,
 ) {
     *review_requests_loading.write() = true;
@@ -645,10 +655,12 @@ async fn refresh_home_data(
     refresh_active_ci_runs(
         github_token,
         store,
+        notifier,
         open_pull_requests_data,
         active_ci_loading,
         active_ci_error,
         active_ci_data,
+        active_ci_notification_statuses,
     )
     .await;
 }
@@ -656,10 +668,12 @@ async fn refresh_home_data(
 async fn refresh_active_ci_runs(
     github_token: Option<String>,
     _store: &dyn Store,
+    notifier: &DynNotifier,
     open_pull_requests_data: Signal<Option<Vec<Item>>>,
     mut active_ci_loading: Signal<bool>,
     mut active_ci_error: Signal<Option<String>>,
     mut active_ci_data: Signal<Option<Vec<ActiveCiRunSummary>>>,
+    active_ci_notification_statuses: Signal<BTreeMap<String, GithubCiRunStatus>>,
 ) {
     let Some(open_pull_requests) = open_pull_requests_data() else {
         return;
@@ -677,6 +691,7 @@ async fn refresh_active_ci_runs(
         }
     };
 
+    let notifier_support = notifier.support();
     let active_pull_requests: Vec<OpenPullRequestSummary> = open_pull_requests
         .iter()
         .filter_map(|item| match &item.kind {
@@ -723,7 +738,19 @@ async fn refresh_active_ci_runs(
             .active_ci_run_status(&pr.owner, &pr.repo, head_ref_name)
             .await
         {
-            Ok(Some(status)) => active_runs.push(ActiveCiRunSummary { pr, status }),
+            Ok(Some(status)) => {
+                notify_active_ci_run(
+                    notifier,
+                    notifier_support,
+                    &pr,
+                    status,
+                    active_ci_notification_statuses,
+                );
+
+                if status.in_progress_jobs > 0 {
+                    active_runs.push(ActiveCiRunSummary { pr, status });
+                }
+            }
             Ok(None) => {}
             Err(err) => {
                 *active_ci_error.write() = Some(err.to_string());
@@ -733,6 +760,91 @@ async fn refresh_active_ci_runs(
 
     *active_ci_data.write() = Some(active_runs);
     *active_ci_loading.write() = false;
+}
+
+fn notify_active_ci_run(
+    notifier: &DynNotifier,
+    support: crate::notify::NotifierSupport,
+    pr: &OpenPullRequestSummary,
+    status: GithubCiRunStatus,
+    mut active_ci_notification_statuses: Signal<BTreeMap<String, GithubCiRunStatus>>,
+) {
+    let key = active_ci_notification_key(pr);
+    let previous_status = active_ci_notification_statuses().get(&key).copied();
+
+    if previous_status == Some(status) {
+        return;
+    }
+
+    let summary = active_ci_notification_summary(pr, status);
+    let body = active_ci_notification_body(pr, status);
+
+    let result = if previous_status.is_some() && support.updates {
+        notifier.update(&key, "Devbuddy", &summary, &body)
+    } else {
+        notifier
+            .notify_with_options(
+                "Devbuddy",
+                &summary,
+                &body,
+                NotificationOptions {
+                    key: Some(key.clone()),
+                    ..Default::default()
+                },
+            )
+            .map(|_| ())
+    };
+
+    if let Err(err) = result {
+        eprintln!("failed to show active CI notification for {key}: {err:#}");
+        return;
+    }
+
+    active_ci_notification_statuses.write().insert(key, status);
+}
+
+fn active_ci_notification_key(pr: &OpenPullRequestSummary) -> String {
+    format!("active-ci:{}/{}#{}", pr.owner, pr.repo, pr.number)
+}
+
+fn active_ci_notification_summary(
+    pr: &OpenPullRequestSummary,
+    status: GithubCiRunStatus,
+) -> String {
+    format!(
+        "{}/{} #{} · {}",
+        pr.owner,
+        pr.repo,
+        pr.number,
+        active_ci_notification_state_label(status)
+    )
+}
+
+fn active_ci_notification_body(pr: &OpenPullRequestSummary, status: GithubCiRunStatus) -> String {
+    let mut details = Vec::new();
+    details.push(format!("{} jobs total", status.total_jobs));
+    details.push(format!("{} in progress", status.in_progress_jobs));
+    details.push(format!("{} succeeded", status.succeeded_jobs));
+    details.push(format!("{} failed", status.failed_jobs));
+
+    if let Some(branch) = pr.head_ref_name.as_deref() {
+        details.push(format!("branch {branch}"));
+    }
+
+    details.push(pr.title.clone());
+    details.join(" · ")
+}
+
+fn active_ci_notification_state_label(status: GithubCiRunStatus) -> &'static str {
+    if status.in_progress_jobs > 0 {
+        "CI running"
+    } else if status.failed_jobs > 0 {
+        "CI failed"
+    } else if status.total_jobs > 0 && status.succeeded_jobs >= status.total_jobs {
+        "CI succeeded"
+    } else {
+        "CI updated"
+    }
 }
 
 fn apply_home_data(

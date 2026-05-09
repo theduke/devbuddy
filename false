@@ -1,3 +1,1 @@
-Implemented linux notifier backend and richer notification capabilities.
-Changed: Cargo.toml, Cargo.lock, src/notify/mod.rs, src/notify/linux.rs, docs/TODO.md.
-Validated: cargo fmt; cargo check --quiet --message-format=short.
+DONE better github pr CI run notifications

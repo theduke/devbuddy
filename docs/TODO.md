@@ -101,7 +101,7 @@ Repeatedly spawn subagents until they report that no more work is available.
 
 - [x] basic pr notificat
 
-- [ ] better github pr CI run notifications
+- [x] better github pr CI run notifications
       for the active PR CI runs tracked in home.rs, implement a notification mechanism
       when an active CI run is detected , send a notification
       if the Notifier backend supports it, update the notification when
