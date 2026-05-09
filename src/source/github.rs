@@ -125,6 +125,13 @@ pub const GITHUB_TOKEN_ENV_VARS: &[&str] = &[
     "GITHUB_ENTERPRISE_TOKEN",
 ];
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum GithubTokenSource {
+    CustomConfig,
+    EnvironmentVariable(&'static str),
+    GithubCli,
+}
+
 #[derive(Debug, Clone)]
 pub struct GithubClient {
     token: String,
@@ -917,11 +924,15 @@ where
 }
 
 pub fn resolve_github_token() -> Result<String> {
+    resolve_github_token_with_source().map(|(token, _)| token)
+}
+
+pub fn resolve_github_token_with_source() -> Result<(String, GithubTokenSource)> {
     for env_name in GITHUB_TOKEN_ENV_VARS {
         if let Ok(token) = env::var(env_name) {
             let token = token.trim().to_string();
             if !token.is_empty() {
-                return Ok(token);
+                return Ok((token, GithubTokenSource::EnvironmentVariable(env_name)));
             }
         }
     }
@@ -942,7 +953,7 @@ pub fn resolve_github_token() -> Result<String> {
             return Err(anyhow!("github token was empty"));
         }
 
-        return Ok(token);
+        return Ok((token, GithubTokenSource::GithubCli));
     }
 
     #[allow(unreachable_code)]

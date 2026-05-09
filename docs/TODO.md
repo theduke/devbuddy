@@ -39,7 +39,7 @@ Repeatedly spawn subagents until they report that no more work is available.
        define a use_store() helper function to easily retrieve the store, based on use_context();
        Then update home.rs to use the shared store!
 
-- [ ] extend views/settings.rs page with a github section
+- [x] extend views/settings.rs page with a github section
       should show : if token was auto-detected, show source of token
       (env var, Github cli ('gh auth token'), or custom config)
       this will require tracking where the token came from, and for the
