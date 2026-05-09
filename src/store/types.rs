@@ -54,6 +54,8 @@ pub struct GithubUserPullRequestItem {
     pub html_url: String,
     pub opened_at: OffsetDateTime,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub head_ref_name: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub last_pushed_at: Option<OffsetDateTime>,
     pub review_decision: PullRequestReviewDecision,
     pub ci_status: PullRequestCiStatus,

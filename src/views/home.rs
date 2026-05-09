@@ -1,6 +1,6 @@
 use crate::{
     components::item::{format_relative_time, ItemCard},
-    source::github::{GithubClient, OpenPullRequestSummary, PullRequestSummary},
+    source::github::{GithubCiRunStatus, GithubClient, OpenPullRequestSummary, PullRequestSummary},
     store::types::{
         GithubReviewRequestItem, GithubUserPullRequestItem, Item, ItemKind, PullRequestCiStatus,
         PullRequestReviewDecision,
@@ -23,6 +23,13 @@ enum HomeCommand {
 }
 
 const AUTO_REFRESH_INTERVAL_SECS: u64 = 90;
+const ACTIVE_CI_REFRESH_INTERVAL_SECS: u64 = 15;
+
+#[derive(Clone, PartialEq)]
+struct ActiveCiRunSummary {
+    pr: OpenPullRequestSummary,
+    status: GithubCiRunStatus,
+}
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum HomeSort {
@@ -62,12 +69,17 @@ pub fn Home() -> Element {
     let open_pull_requests_loading = use_signal(|| true);
     let open_pull_requests_error = use_signal(|| None::<String>);
     let open_pull_requests_data = use_signal(|| None::<Vec<Item>>);
+    let active_ci_loading = use_signal(|| true);
+    let active_ci_error = use_signal(|| None::<String>);
+    let active_ci_data = use_signal(|| None::<Vec<ActiveCiRunSummary>>);
     let sort_order = use_signal(|| HomeSort::Newest);
     let grouping = use_signal(|| HomeGrouping::Grouped);
     let store = use_store();
+    let refresh_store = Arc::clone(&store);
+    let active_ci_store = Arc::clone(&store);
 
     let refresh = use_coroutine(move |mut rx| {
-        let store = Arc::clone(&store);
+        let store = Arc::clone(&refresh_store);
         let review_requests_loading = review_requests_loading;
         let review_requests_error = review_requests_error;
         let review_requests_data = review_requests_data;
@@ -110,6 +122,9 @@ pub fn Home() -> Element {
                 open_pull_requests_loading,
                 open_pull_requests_error,
                 open_pull_requests_data,
+                active_ci_loading,
+                active_ci_error,
+                active_ci_data,
                 sort_order(),
             )
             .await;
@@ -128,6 +143,9 @@ pub fn Home() -> Element {
                             open_pull_requests_loading,
                             open_pull_requests_error,
                             open_pull_requests_data,
+                            active_ci_loading,
+                            active_ci_error,
+                            active_ci_data,
                             sort_order(),
                         )
                         .await;
@@ -157,12 +175,58 @@ pub fn Home() -> Element {
         }
     });
 
+    let _active_ci_refresh = use_future(move || {
+        let store = Arc::clone(&active_ci_store);
+        let open_pull_requests_data = open_pull_requests_data;
+        let active_ci_loading = active_ci_loading;
+        let active_ci_error = active_ci_error;
+        let active_ci_data = active_ci_data;
+        async move {
+            let github_token = match store.load_config().await {
+                Ok(config) => config.github_token,
+                Err(err) => {
+                    eprintln!("failed to load github config for active ci monitoring: {err:#}");
+                    None
+                }
+            };
+
+            refresh_active_ci_runs(
+                github_token.clone(),
+                store.as_ref(),
+                open_pull_requests_data,
+                active_ci_loading,
+                active_ci_error,
+                active_ci_data,
+            )
+            .await;
+
+            let mut interval =
+                tokio::time::interval(Duration::from_secs(ACTIVE_CI_REFRESH_INTERVAL_SECS));
+            interval.tick().await;
+            loop {
+                interval.tick().await;
+                refresh_active_ci_runs(
+                    github_token.clone(),
+                    store.as_ref(),
+                    open_pull_requests_data,
+                    active_ci_loading,
+                    active_ci_error,
+                    active_ci_data,
+                )
+                .await;
+            }
+        }
+    });
+
     let review_requests_loading_value = review_requests_loading();
     let review_requests_error_value = review_requests_error();
     let review_requests_data_value = review_requests_data();
     let open_pull_requests_loading_value = open_pull_requests_loading();
     let open_pull_requests_error_value = open_pull_requests_error();
     let open_pull_requests_data_value = open_pull_requests_data();
+    let active_ci_loading_value = active_ci_loading();
+    let active_ci_error_value = active_ci_error();
+    let active_ci_data_value = active_ci_data();
     let sort_order_value = sort_order();
     let grouping_value = grouping();
     let is_loading = review_requests_loading_value || open_pull_requests_loading_value;
@@ -172,6 +236,11 @@ pub fn Home() -> Element {
     );
 
     rsx! {
+        ActiveCiRunsPanel {
+            loading: active_ci_loading_value,
+            error: active_ci_error_value,
+            active_runs: active_ci_data_value,
+        }
         Hero {
             size: Some(HeroSize::Small),
             class: "review-hero",
@@ -481,6 +550,9 @@ async fn refresh_home_data(
     mut open_pull_requests_loading: Signal<bool>,
     mut open_pull_requests_error: Signal<Option<String>>,
     open_pull_requests_data: Signal<Option<Vec<Item>>>,
+    mut active_ci_loading: Signal<bool>,
+    mut active_ci_error: Signal<Option<String>>,
+    active_ci_data: Signal<Option<Vec<ActiveCiRunSummary>>>,
     sort_order: HomeSort,
 ) {
     *review_requests_loading.write() = true;
@@ -488,14 +560,16 @@ async fn refresh_home_data(
     *open_pull_requests_loading.write() = true;
     *open_pull_requests_error.write() = None;
 
-    let client = match build_github_client(github_token) {
+    let client = match build_github_client(github_token.clone()) {
         Ok(client) => client,
         Err(err) => {
             let message = err.to_string();
             *review_requests_error.write() = Some(message.clone());
-            *open_pull_requests_error.write() = Some(message);
+            *open_pull_requests_error.write() = Some(message.clone());
+            *active_ci_error.write() = Some(message);
             *review_requests_loading.write() = false;
             *open_pull_requests_loading.write() = false;
+            *active_ci_loading.write() = false;
             return;
         }
     };
@@ -561,6 +635,98 @@ async fn refresh_home_data(
         open_pull_requests_loading,
         open_pull_requests_data,
     );
+
+    refresh_active_ci_runs(
+        github_token,
+        store,
+        open_pull_requests_data,
+        active_ci_loading,
+        active_ci_error,
+        active_ci_data,
+    )
+    .await;
+}
+
+async fn refresh_active_ci_runs(
+    github_token: Option<String>,
+    _store: &dyn Store,
+    open_pull_requests_data: Signal<Option<Vec<Item>>>,
+    mut active_ci_loading: Signal<bool>,
+    mut active_ci_error: Signal<Option<String>>,
+    mut active_ci_data: Signal<Option<Vec<ActiveCiRunSummary>>>,
+) {
+    let Some(open_pull_requests) = open_pull_requests_data() else {
+        return;
+    };
+
+    *active_ci_loading.write() = true;
+    *active_ci_error.write() = None;
+
+    let client = match build_github_client(github_token) {
+        Ok(client) => client,
+        Err(err) => {
+            *active_ci_error.write() = Some(err.to_string());
+            *active_ci_loading.write() = false;
+            return;
+        }
+    };
+
+    let active_pull_requests: Vec<OpenPullRequestSummary> = open_pull_requests
+        .iter()
+        .filter_map(|item| match &item.kind {
+            ItemKind::GithubUserPullRequest(pr)
+                if pr.ci_status == PullRequestCiStatus::InProgress =>
+            {
+                Some(OpenPullRequestSummary {
+                    owner: pr.owner.clone(),
+                    repo: pr.repo.clone(),
+                    number: pr.number,
+                    title: pr.title.clone(),
+                    html_url: pr.html_url.clone(),
+                    opened_at: pr.opened_at,
+                    head_ref_name: pr.head_ref_name.clone(),
+                    last_pushed_at: pr.last_pushed_at,
+                    review_decision:
+                        crate::source::github::PullRequestReviewDecision::ReviewRequired,
+                    ci_status: crate::source::github::PullRequestCiStatus::InProgress,
+                    last_review_comment_at: pr.last_review_comment_at,
+                    last_changes_requested_at: pr.last_changes_requested_at,
+                    last_approved_at: pr.last_approved_at,
+                    last_ci_failure_at: pr.last_ci_failure_at,
+                    last_ci_success_at: pr.last_ci_success_at,
+                    last_ci_started_at: pr.last_ci_started_at,
+                })
+            }
+            _ => None,
+        })
+        .collect();
+
+    if active_pull_requests.is_empty() {
+        *active_ci_data.write() = Some(Vec::new());
+        *active_ci_loading.write() = false;
+        return;
+    }
+
+    let mut active_runs = Vec::new();
+    for pr in active_pull_requests {
+        let Some(head_ref_name) = pr.head_ref_name.as_deref() else {
+            continue;
+        };
+
+        match client
+            .active_ci_run_status(&pr.owner, &pr.repo, head_ref_name)
+            .await
+        {
+            Ok(Some(status)) => active_runs.push(ActiveCiRunSummary { pr, status }),
+            Ok(None) => {}
+            Err(err) => {
+                *active_ci_error.write() = Some(err.to_string());
+            }
+        }
+    }
+
+    *active_ci_data.write() = Some(active_runs);
+    *active_ci_loading.write() = false;
 }
 
 fn apply_home_data(
@@ -852,6 +1018,99 @@ fn sort_open_pull_requests(prs: &mut Vec<Item>, sort_order: HomeSort) {
 }
 
 #[component]
+fn ActiveCiRunsPanel(
+    loading: bool,
+    error: Option<String>,
+    active_runs: Option<Vec<ActiveCiRunSummary>>,
+) -> Element {
+    let active_runs = active_runs.unwrap_or_default();
+    if !loading && error.is_none() && active_runs.is_empty() {
+        return rsx! {};
+    }
+
+    let error = error.as_ref();
+    let is_initial_loading = loading && active_runs.is_empty() && error.is_none();
+
+    rsx! {
+        Section {
+            class: "review-section pt-5 pb-0",
+            Container {
+                class: "review-container",
+                div { class: "box",
+                    div { class: "is-flex is-justify-content-space-between is-align-items-center is-flex-wrap-wrap mb-4",
+                        div {
+                            h2 { class: "title is-5 has-text-grey-dark mb-1", "Active CI runs" }
+                            p { class: "review-list-subtitle mb-0", "Monitored separately from the main refresh ticker." }
+                        }
+                        button {
+                            class: if loading {
+                                "button is-small is-info is-loading"
+                            } else {
+                                "button is-small is-info"
+                            },
+                            disabled: loading,
+                            "aria-label": "Refresh active CI runs",
+                            span { class: "is-sr-only", "Refresh active CI runs" }
+                        }
+                    }
+                    if let Some(err) = error {
+                        Notification {
+                            color: Some(Color::Danger),
+                            p { "Active CI error: {err}" }
+                        }
+                    }
+                    if is_initial_loading {
+                        Notification {
+                            color: Some(Color::Info),
+                            "Checking active CI runs…"
+                        }
+                    } else if active_runs.is_empty() {
+                        Notification {
+                            color: Some(Color::Success),
+                            "No active CI runs."
+                        }
+                    } else {
+                        div { class: "review-card-stack",
+                            for run in active_runs {
+                                div { class: "box is-shadowless has-background-light",
+                                    div { class: "is-flex is-justify-content-space-between is-align-items-start is-flex-wrap-wrap gap-3",
+                                        div {
+                                            p { class: "has-text-weight-semibold mb-1",
+                                                "{run.pr.repo} #{run.pr.number}"
+                                            }
+                                            p { class: "mb-0",
+                                                a { href: run.pr.html_url.clone(), "{run.pr.title}" }
+                                            }
+                                            if let Some(branch) = &run.pr.head_ref_name {
+                                                p { class: "is-size-7 has-text-grey mt-1", "branch: {branch}" }
+                                            }
+                                        }
+                                        div { class: "buttons are-small has-addons mb-0",
+                                            span { class: "button is-static is-success is-light",
+                                                "{run.status.succeeded_jobs} succeeded"
+                                            }
+                                            span { class: "button is-static is-danger is-light",
+                                                "{run.status.failed_jobs} failed"
+                                            }
+                                            span { class: "button is-static is-warning is-light",
+                                                "{run.status.in_progress_jobs} in progress"
+                                            }
+                                            span { class: "button is-static is-info is-light",
+                                                "{run.status.total_jobs} total"
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+#[component]
 fn PullRequestListHeader(title: String, subtitle: String, count_label: Option<String>) -> Element {
     rsx! {
         div { class: "level is-mobile mb-4 review-list-header",
@@ -1059,6 +1318,7 @@ fn map_open_pull_requests(open_pull_requests: Vec<OpenPullRequestSummary>) -> Ve
                 title: pr.title,
                 html_url: pr.html_url,
                 opened_at: pr.opened_at,
+                head_ref_name: pr.head_ref_name,
                 last_pushed_at: pr.last_pushed_at,
                 review_decision: match pr.review_decision {
                     crate::source::github::PullRequestReviewDecision::Approved => {

@@ -347,6 +347,7 @@ mod tests {
                     title: "Ship it".to_string(),
                     html_url: "https://example.com/open".to_string(),
                     opened_at: timestamp(7),
+                    head_ref_name: None,
                     last_pushed_at: None,
                     review_decision: PullRequestReviewDecision::Approved,
                     ci_status: PullRequestCiStatus::Success,

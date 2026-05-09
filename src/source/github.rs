@@ -83,6 +83,7 @@ pub const GITHUB_OPEN_PRS_GRAPHQL: &str = r#"query($query: String!, $after: Stri
             login
           }
         }
+        headRefName
         commits(last: 1) {
           nodes {
             commit {
@@ -166,6 +167,7 @@ pub struct OpenPullRequestSummary {
     pub title: String,
     pub html_url: String,
     pub opened_at: OffsetDateTime,
+    pub head_ref_name: Option<String>,
     pub last_pushed_at: Option<OffsetDateTime>,
     pub review_decision: PullRequestReviewDecision,
     pub ci_status: PullRequestCiStatus,
@@ -317,6 +319,7 @@ struct GithubOpenPullRequestsSearchNode {
     #[serde(default)]
     reviews: GithubPullRequestReviewConn,
     repository: Option<GithubRepository>,
+    head_ref_name: Option<String>,
     #[serde(default)]
     commits: GithubPullRequestCommitConn,
 }
@@ -478,7 +481,17 @@ struct GithubRepository {
 }
 
 #[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
+struct GithubWorkflowRunsResponse {
+    #[serde(default)]
+    workflow_runs: Vec<GithubWorkflowRunSummary>,
+}
+
+#[derive(Debug, Deserialize)]
+struct GithubWorkflowRunSummary {
+    id: i64,
+}
+
+#[derive(Debug, Deserialize)]
 struct GithubWorkflowRunJobsResponse {
     total_count: usize,
     jobs: Vec<GithubWorkflowRunJob>,
@@ -728,6 +741,42 @@ impl GithubClient {
         Ok(status)
     }
 
+    pub async fn active_ci_run_status(
+        &self,
+        owner: &str,
+        repo: &str,
+        head_ref_name: &str,
+    ) -> Result<Option<GithubCiRunStatus>> {
+        if self.token.trim().is_empty() {
+            return Err(anyhow!("github token is empty"));
+        }
+        if owner.trim().is_empty() {
+            return Err(anyhow!("github owner is empty"));
+        }
+        if repo.trim().is_empty() {
+            return Err(anyhow!("github repo is empty"));
+        }
+        if head_ref_name.trim().is_empty() {
+            return Ok(None);
+        }
+
+        let response: GithubWorkflowRunsResponse = do_github_rest_request(
+            &self.base_url,
+            &self.token,
+            &format!(
+                "/repos/{owner}/{repo}/actions/runs?branch={}&status=in_progress&per_page=1",
+                encode_query_component(head_ref_name)
+            ),
+        )
+        .await?;
+
+        let Some(run) = response.workflow_runs.first() else {
+            return Ok(None);
+        };
+
+        Ok(Some(self.ci_run_status(owner, repo, run.id).await?))
+    }
+
     pub async fn open_pull_requests_for_user(&self) -> Result<Vec<OpenPullRequestSummary>> {
         if self.token.trim().is_empty() {
             return Err(anyhow!("github token is empty"));
@@ -807,6 +856,7 @@ impl GithubClient {
                     title,
                     html_url: url,
                     opened_at,
+                    head_ref_name: node.head_ref_name,
                     last_pushed_at,
                     review_decision: node
                         .review_decision
@@ -1143,6 +1193,19 @@ pub fn resolve_github_token_with_source() -> Result<(String, GithubTokenSource)>
 
     #[allow(unreachable_code)]
     Err(anyhow!("github token not found in environment"))
+}
+
+fn encode_query_component(value: &str) -> String {
+    let mut encoded = String::with_capacity(value.len());
+    for byte in value.bytes() {
+        match byte {
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'.' | b'_' | b'~' => {
+                encoded.push(byte as char)
+            }
+            _ => encoded.push_str(&format!("%{byte:02X}")),
+        }
+    }
+    encoded
 }
 
 #[cfg(test)]
