@@ -17,7 +17,7 @@ Repeatedly spawn subagents until they report that no more work is available.
 
 ## Tasks
 
-- [ ] Remove Home and blog from navbar
+- [x] Remove Home and blog from navbar
 
 - [ ] Improve settings gear icon used in navbar, current one sucks.
       Also, settings icon should always be visible, even on mobile bulma layouts

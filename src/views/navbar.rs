@@ -7,18 +7,6 @@ pub fn Navbar() -> Element {
     let route = use_route::<Route>();
     let mut menu_open = use_signal(|| false);
 
-    let home_class = if matches!(route, Route::Home {}) {
-        "navbar-item is-active"
-    } else {
-        "navbar-item"
-    };
-
-    let blog_class = if matches!(route, Route::Blog { .. }) {
-        "navbar-item is-active"
-    } else {
-        "navbar-item"
-    };
-
     let settings_class = if matches!(route, Route::Settings {}) {
         "navbar-item is-active"
     } else {
@@ -58,18 +46,6 @@ pub fn Navbar() -> Element {
                     class: if menu_open() { "navbar-menu is-active" } else { "navbar-menu" },
                     div {
                         class: "navbar-start",
-                        Link {
-                            to: Route::Home {},
-                            class: home_class,
-                            onclick: move |_| menu_open.set(false),
-                            "Home"
-                        }
-                        Link {
-                            to: Route::Blog { id: 1 },
-                            class: blog_class,
-                            onclick: move |_| menu_open.set(false),
-                            "Blog"
-                        }
                     }
 
                     div {
