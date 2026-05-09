@@ -44,6 +44,11 @@ jobs:
       - name: Install Dioxus CLI
         run: cargo binstall dioxus-cli --no-confirm --locked
 
+      - name: Add cargo bin to PATH on macOS
+        if: runner.os == 'macOS'
+        shell: bash
+        run: echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
+
       - name: Install platform dependencies
         shell: bash
         run: bash "${{ matrix.deps_script }}"
