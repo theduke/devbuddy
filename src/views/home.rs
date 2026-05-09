@@ -76,8 +76,8 @@ pub fn Home() -> Element {
 
 #[component]
 fn PullRequestCard(pr: PullRequestSummary) -> Element {
-    let (requested_relative, requested_exact) = format_requested_at(pr.requested_at);
-    let (updated_relative, updated_exact) = format_updated_at(pr.updated_at);
+    let requested_relative = format_requested_at(pr.requested_at);
+    let author = format!("@{}", pr.author);
     let repo = format!("{}/{}", pr.owner, pr.repo);
     let number = format!("#{}", pr.number);
     let url = pr.html_url.clone();
@@ -89,12 +89,20 @@ fn PullRequestCard(pr: PullRequestSummary) -> Element {
                 href: url.clone(),
                 target: "_blank",
                 rel: "noreferrer noopener",
-                class: "is-flex is-align-items-center gap-2 has-text-dark mb-2",
-                img {
-                    src: asset!("/assets/github-mark.svg"),
-                    alt: "GitHub",
-                    width: "20",
-                    height: "20",
+                class: "is-flex is-align-items-flex-start gap-3 has-text-dark mb-2",
+                div { class: "is-flex is-flex-direction-column is-align-items-center is-flex-shrink-0 mt-1",
+                    img {
+                        src: asset!("/assets/github-mark.svg"),
+                        alt: "GitHub",
+                        width: "20",
+                        height: "20",
+                    }
+                    img {
+                        src: asset!("/assets/pull-request.svg"),
+                        alt: "Pull request",
+                        width: "20",
+                        height: "20",
+                    }
                 }
                 div { class: "is-flex is-flex-wrap-wrap is-align-items-baseline gap-2",
                     span { class: "has-text-link has-text-weight-semibold is-size-7 is-uppercase", "{repo}" }
@@ -106,27 +114,19 @@ fn PullRequestCard(pr: PullRequestSummary) -> Element {
             }
 
             p { class: "",
-                span { class: "is-size-5 has-text-weight-bold", title: requested_exact, "Requested {requested_relative}" }
+                span { class: "is-size-5 has-text-weight-bold", "{author}" }
                 " "
-                span { class: "is-size-5 ", title: updated_exact, "Updated {updated_relative}" }
+                span { class: "is-size-5", "{requested_relative}" }
             }
         }
     }
 }
 
-fn format_requested_at(t: Option<OffsetDateTime>) -> (String, String) {
+fn format_requested_at(t: Option<OffsetDateTime>) -> String {
     match t {
-        Some(t) => format_time_pair(t),
-        None => ("unknown".to_string(), "Unknown requested time".to_string()),
+        Some(t) => format_relative_time(t),
+        None => "unknown".to_string(),
     }
-}
-
-fn format_updated_at(t: OffsetDateTime) -> (String, String) {
-    format_time_pair(t)
-}
-
-fn format_time_pair(t: OffsetDateTime) -> (String, String) {
-    (format_relative_time(t), format_time(t))
 }
 
 fn format_relative_time(t: OffsetDateTime) -> String {
@@ -170,7 +170,3 @@ fn format_relative_time(t: OffsetDateTime) -> String {
     format!("{} {}{} {}", value, unit, plural, suffix)
 }
 
-fn format_time(t: OffsetDateTime) -> String {
-    t.format(&time::format_description::well_known::Rfc2822)
-        .unwrap_or_else(|_| t.to_string())
-}
