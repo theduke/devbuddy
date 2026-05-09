@@ -80,7 +80,7 @@ Repeatedly spawn subagents until they report that no more work is available.
       then define a type DynNotifier = Arc<dyn Notifier>, and a helper
       build_notifier() function in nofitication/mod.rs
 
-- [ ] update home.rs to use the new abstract notifier system, see
+- [x] update home.rs to use the new abstract notifier system, see
       src/notifiy/mod.rs and DynNotifier
 
 - [ ] Extend the notification system in src/notify/mod.rs

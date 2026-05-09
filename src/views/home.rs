@@ -1,5 +1,6 @@
 use crate::{
     components::item::{format_relative_time, ItemCard},
+    notify::{build_notifier, DynNotifier},
     source::github::{GithubCiRunStatus, GithubClient, OpenPullRequestSummary, PullRequestSummary},
     store::types::{
         GithubReviewRequestItem, GithubUserPullRequestItem, Item, ItemKind, PullRequestCiStatus,
@@ -9,7 +10,6 @@ use crate::{
 };
 use dioxus::prelude::*;
 use dioxus_bulma::{Color, Container, Hero, HeroSize, Notification, Section, Title, TitleSize};
-use dioxus_sdk_notification::Notification as DesktopNotification;
 use futures::{join, StreamExt};
 use std::collections::BTreeMap;
 use std::{cmp::Ordering, sync::Arc, time::Duration};
@@ -75,11 +75,14 @@ pub fn Home() -> Element {
     let sort_order = use_signal(|| HomeSort::Newest);
     let grouping = use_signal(|| HomeGrouping::Grouped);
     let store = use_store();
+    let notifier = build_notifier();
     let refresh_store = Arc::clone(&store);
+    let refresh_notifier = Arc::clone(&notifier);
     let active_ci_store = Arc::clone(&store);
 
     let refresh = use_coroutine(move |mut rx| {
         let store = Arc::clone(&refresh_store);
+        let notifier = Arc::clone(&refresh_notifier);
         let review_requests_loading = review_requests_loading;
         let review_requests_error = review_requests_error;
         let review_requests_data = review_requests_data;
@@ -116,6 +119,7 @@ pub fn Home() -> Element {
                 store.as_ref(),
                 &mut stored_items,
                 &mut last_notified_snapshot,
+                &notifier,
                 review_requests_loading,
                 review_requests_error,
                 review_requests_data,
@@ -137,6 +141,7 @@ pub fn Home() -> Element {
                             store.as_ref(),
                             &mut stored_items,
                             &mut last_notified_snapshot,
+                            &notifier,
                             review_requests_loading,
                             review_requests_error,
                             review_requests_data,
@@ -544,6 +549,7 @@ async fn refresh_home_data(
     store: &dyn Store,
     stored_items: &mut Vec<Item>,
     last_notified_snapshot: &mut HomeSnapshot,
+    notifier: &DynNotifier,
     mut review_requests_loading: Signal<bool>,
     mut review_requests_error: Signal<Option<String>>,
     review_requests_data: Signal<Option<Vec<Item>>>,
@@ -613,7 +619,7 @@ async fn refresh_home_data(
         );
         let fresh_snapshot = meaningful_home_snapshot(&fresh_items);
         if let Some(changes) = diff_home_snapshots(last_notified_snapshot, &fresh_snapshot) {
-            send_home_change_notification(&changes);
+            send_home_change_notification(notifier, &changes);
             *last_notified_snapshot = fresh_snapshot;
         }
         if fresh_items != *stored_items {
@@ -872,15 +878,9 @@ fn diff_home_snapshots(
     }
 }
 
-fn send_home_change_notification(changes: &HomeSnapshotChanges) {
-    let mut notification = DesktopNotification::new();
-    notification
-        .app_name("Devbuddy")
-        .summary(changes.summary())
-        .body(changes.body());
-
-    if let Err(err) = notification.show() {
-        eprintln!("failed to show desktop notification: {err}");
+fn send_home_change_notification(notifier: &DynNotifier, changes: &HomeSnapshotChanges) {
+    if let Err(err) = notifier.notify("Devbuddy", &changes.summary(), &changes.body()) {
+        eprintln!("failed to show desktop notification: {err:#}");
     }
 }
 
