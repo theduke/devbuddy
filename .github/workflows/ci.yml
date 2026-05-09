@@ -66,13 +66,16 @@ jobs:
           mkdir -p artifact
           case "$RUNNER_OS" in
             Linux)
-              cp target/dx/devbuddy/release/linux/app/devbuddy artifact/devbuddy
+              binary="$(find target/dx -path '*/release/linux/app/devbuddy' -type f | head -n 1)"
+              cp "$binary" artifact/devbuddy
               ;;
             macOS)
-              cp -R target/dx/devbuddy/release/macos/*.app artifact/
+              app_bundle="$(find target/dx -path '*/release/macos/*.app' -type d | head -n 1)"
+              cp -R "$app_bundle" artifact/
               ;;
             Windows)
-              cp target/dx/devbuddy/release/windows/app/devbuddy.exe artifact/devbuddy.exe
+              binary="$(find target/dx -path '*/release/windows/app/devbuddy.exe' -type f | head -n 1)"
+              cp "$binary" artifact/devbuddy.exe
               ;;
             *)
               echo "Unsupported runner: $RUNNER_OS" >&2
