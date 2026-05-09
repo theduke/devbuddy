@@ -17,6 +17,7 @@ sudo apt-get install -y \
   libpango1.0-dev \
   libcairo2-dev \
   libx11-dev \
+  libxdo-dev \
   libxrandr-dev \
   libxcursor-dev \
   libxi-dev \
