@@ -28,7 +28,7 @@ Repeatedly spawn subagents until they report that no more work is available.
       should upload artifacts (final dioxus desktop binary) to ci, whith low
       retention time (eg 2 days or so)
 
-- [ ] ensure the recently setup CI works correctly
+- [x] ensure the recently setup CI works correctly
       use the github-ci-wait skill to wait for ci failure of the ci branch
       if failed, analyse logs from tail , fix issues, use jj st + jj commit -m '<msg>'
       to commit, 'jj bookmark set ci -r <revision>' and 'jj git push' to push

@@ -3,12 +3,12 @@ use std::sync::Arc;
 
 #[cfg(all(feature = "desktop", target_os = "linux"))]
 mod linux;
-#[cfg(feature = "desktop")]
+#[cfg(all(feature = "desktop", not(target_os = "linux")))]
 mod sdk;
 
 #[cfg(all(feature = "desktop", target_os = "linux"))]
 pub use linux::LinuxNotifier;
-#[cfg(feature = "desktop")]
+#[cfg(all(feature = "desktop", not(target_os = "linux")))]
 pub use sdk::SdkNotifier;
 
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
