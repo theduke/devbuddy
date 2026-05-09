@@ -78,7 +78,7 @@ pub fn Navbar() -> Element {
         }
 
         Section {
-            class: "pt-6",
+            style: "margin-top: 1.1rem;",
             Outlet::<Route> {}
         }
     }

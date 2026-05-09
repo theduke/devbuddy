@@ -13,24 +13,36 @@ pub fn Home() -> Element {
 
     rsx! {
         Hero {
-            size: Some(HeroSize::Medium),
-            color: Some(Color::Primary),
+            size: Some(HeroSize::Small),
+            class: "review-hero",
             Container {
-                Title {
-                    size: TitleSize::H1,
-                    spaced: true,
-                    "GitHub review requests"
-                }
-                p { class: "subtitle", "Pull requests waiting on your review." }
-                p {
-                    class: "has-text-grey-lighter",
-                    "Queries GitHub for review-requested:@me state:open."
+                class: "review-container",
+                div { class: "is-flex is-align-items-center",
+                    img {
+                        class: "review-hero-icon mr-4",
+                        src: asset!("/assets/github-mark.svg"),
+                        alt: "GitHub",
+                        width: "48",
+                        height: "48",
+                    }
+                    div {
+                        Title {
+                            size: TitleSize::H1,
+                            class: "mb-2 review-hero-title",
+                            "Review requests"
+                        }
+                        p { class: "subtitle is-6 has-text-grey mb-0",
+                            "Pull requests waiting on your review on GitHub."
+                        }
+                    }
                 }
             }
         }
 
         Section {
+            class: "review-section pt-5",
             Container {
+                class: "review-container",
                 match &*requests.read() {
                     None => rsx! {
                         Notification {
@@ -51,21 +63,27 @@ pub fn Home() -> Element {
                         }
                     },
                     Some(Ok(prs)) => rsx! {
-                        div { class: "level mb-5",
+                        div { class: "level is-mobile mb-4 review-list-header",
                             div { class: "level-left",
                                 div { class: "level-item",
-                                    Title { size: TitleSize::H3, "Open review requests" }
+                                    h2 { class: "title is-5 has-text-grey-dark mb-0",
+                                        "Open review requests"
+                                    }
                                 }
                             }
                             div { class: "level-right",
                                 div { class: "level-item",
-                                    span { class: "has-text-info has-text-weight-semibold is-size-7", "{prs.len()} open" }
+                                    span { class: "tag is-info is-light is-medium has-text-weight-semibold",
+                                        "{prs.len()} open"
+                                    }
                                 }
                             }
                         }
 
-                        for pr in prs {
-                            PullRequestCard { pr: pr.clone() }
+                        div { class: "review-card-stack",
+                            for pr in prs {
+                                PullRequestCard { pr: pr.clone() }
+                            }
                         }
                     },
                 }
@@ -77,6 +95,10 @@ pub fn Home() -> Element {
 #[component]
 fn PullRequestCard(pr: PullRequestSummary) -> Element {
     let requested_relative = format_requested_at(pr.requested_at);
+    let age_tone = age_tone_suffix(pr.requested_at);
+    let requested_class = format!("review-age review-age-{age_tone} has-text-weight-bold");
+    let box_tone_class = format!("review-pr-box-{age_tone}");
+    let age_section_class = format!("review-pr-age-section review-pr-age-section-{age_tone}");
     let author = format!("@{}", pr.author);
     let repo = format!("{}/{}", pr.owner, pr.repo);
     let number = format!("#{}", pr.number);
@@ -84,41 +106,59 @@ fn PullRequestCard(pr: PullRequestSummary) -> Element {
     let title = pr.title.clone();
 
     rsx! {
-        div { class: "box mb-4 p-4", style: "border-left: 4px solid hsl(217, 71%, 53%);",
+        div { class: "box review-pr-box p-0 mb-0 {box_tone_class}",
             a {
                 href: url.clone(),
                 target: "_blank",
                 rel: "noreferrer noopener",
-                class: "is-flex is-align-items-flex-start gap-3 has-text-dark mb-2",
-                div { class: "is-flex is-flex-direction-column is-align-items-center is-flex-shrink-0 mt-1",
+                class: "review-pr-link has-text-dark",
+                div { class: "review-pr-icons",
                     img {
                         src: asset!("/assets/github-mark.svg"),
                         alt: "GitHub",
-                        width: "20",
-                        height: "20",
+                        width: "22",
+                        height: "22",
                     }
                     img {
                         src: asset!("/assets/pull-request.svg"),
                         alt: "Pull request",
-                        width: "20",
-                        height: "20",
+                        width: "22",
+                        height: "22",
                     }
                 }
-                div { class: "is-flex is-flex-wrap-wrap is-align-items-baseline gap-2",
-                    span { class: "has-text-link has-text-weight-semibold is-size-7 is-uppercase", "{repo}" }
-                    span { class: "has-text-grey-light has-text-weight-light", "·" }
-                    span { class: "has-text-grey-dark has-text-weight-semibold is-family-monospace", "{number}" }
-                    span { class: "has-text-grey-light has-text-weight-light", "·" }
-                    span { class: "has-text-weight-semibold is-size-6", "{title}" }
+                div { class: "review-pr-status",
+                    span { class: "review-pr-status-label", "NEEDS REVIEW" }
+                }
+                div { class: "review-pr-content",
+                    div { class: "review-pr-meta-row mb-1",
+                        span { class: "review-repo has-text-weight-bold mr-2", "{repo}" }
+                        span { class: "review-number is-family-monospace has-text-weight-semibold mr-2", "{number}" }
+                        span { class: "review-author has-text-weight-semibold", "{author}" }
+                    }
+                    p { class: "review-pr-title has-text-weight-semibold", "{title}" }
+                }
+                div { class: "{age_section_class}",
+                    span { class: "review-pr-age-label-top", "Requested" }
+                    span { class: "{requested_class}", "{requested_relative}" }
                 }
             }
-
-            p { class: "",
-                span { class: "is-size-5 has-text-weight-bold", "{author}" }
-                " "
-                span { class: "is-size-5", "{requested_relative}" }
-            }
         }
+    }
+}
+
+fn age_tone_suffix(t: Option<OffsetDateTime>) -> &'static str {
+    let Some(t) = t else {
+        return "unknown";
+    };
+    let age_seconds = (OffsetDateTime::now_utc().unix_timestamp() - t.unix_timestamp()).max(0);
+    if age_seconds <= 4 * 3_600 {
+        "green"
+    } else if age_seconds <= 2 * 86_400 {
+        "yellow"
+    } else if age_seconds <= 5 * 86_400 {
+        "orange"
+    } else {
+        "red"
     }
 }
 
@@ -169,4 +209,3 @@ fn format_relative_time(t: OffsetDateTime) -> String {
     let plural = if value == 1 { "" } else { "s" };
     format!("{} {}{} {}", value, unit, plural, suffix)
 }
-
