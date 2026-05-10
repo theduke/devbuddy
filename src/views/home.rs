@@ -714,6 +714,7 @@ async fn refresh_active_ci_runs(
                     review_decision:
                         crate::source::github::PullRequestReviewDecision::ReviewRequired,
                     ci_status: crate::source::github::PullRequestCiStatus::InProgress,
+                    latest_ci_run_id: pr.latest_ci_run_id,
                     last_review_comment_at: pr.last_review_comment_at,
                     last_changes_requested_at: pr.last_changes_requested_at,
                     last_approved_at: pr.last_approved_at,
@@ -1220,11 +1221,15 @@ fn ActiveCiRunCard(run: ActiveCiRunSummary) -> Element {
         .head_ref_name
         .as_ref()
         .map(|branch| format!("branch {branch}"));
+    let run_url = format!(
+        "https://github.com/{}/{}/actions/runs/{}",
+        run.pr.owner, run.pr.repo, status.run_id
+    );
 
     rsx! {
         div { class: "{card_class}",
             a {
-                href: run.pr.html_url.clone(),
+                href: run_url,
                 target: "_blank",
                 rel: "noreferrer noopener",
                 class: "review-pr-link active-ci-link has-text-dark",
@@ -1529,6 +1534,7 @@ fn map_open_pull_requests(open_pull_requests: Vec<OpenPullRequestSummary>) -> Ve
                         PullRequestCiStatus::Unknown
                     }
                 },
+                latest_ci_run_id: pr.latest_ci_run_id,
                 last_review_comment_at: pr.last_review_comment_at,
                 last_changes_requested_at: pr.last_changes_requested_at,
                 last_approved_at: pr.last_approved_at,

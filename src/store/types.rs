@@ -60,6 +60,8 @@ pub struct GithubUserPullRequestItem {
     pub review_decision: PullRequestReviewDecision,
     pub ci_status: PullRequestCiStatus,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub latest_ci_run_id: Option<i64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub last_review_comment_at: Option<OffsetDateTime>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub last_changes_requested_at: Option<OffsetDateTime>,
