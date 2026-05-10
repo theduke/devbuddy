@@ -6,6 +6,10 @@ on:
     branches:
       - main
 
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
 env:
   CARGO_TERM_COLOR: always
 
@@ -68,38 +72,7 @@ jobs:
         shell: bash
         run: |
           if [[ "$RUNNER_OS" == "macOS" ]]; then
-            "$HOME/.cargo/bin/dx" build --desktop --release
+            "$HOME/.cargo/bin/dx" build --desktop
           else
-            dx build --desktop --release
+            dx build --desktop
           fi
-
-      - name: Prepare artifact
-        shell: bash
-        run: |
-          set -euo pipefail
-          mkdir -p artifact
-          case "$RUNNER_OS" in
-            Linux)
-              binary="$(find target/dx -path '*/release/linux/app/devbuddy' -type f | head -n 1)"
-              cp "$binary" artifact/devbuddy
-              ;;
-            macOS)
-              app_bundle="$(find target/dx -path '*/release/macos/*.app' -type d | head -n 1)"
-              cp -R "$app_bundle" artifact/
-              ;;
-            Windows)
-              binary="$(find target/dx -path '*/release/windows/app/devbuddy.exe' -type f | head -n 1)"
-              cp "$binary" artifact/devbuddy.exe
-              ;;
-            *)
-              echo "Unsupported runner: $RUNNER_OS" >&2
-              exit 1
-              ;;
-          esac
-
-      - name: Upload artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: ${{ matrix.artifact_name }}
-          path: artifact
-          retention-days: 2
