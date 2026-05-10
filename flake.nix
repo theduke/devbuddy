@@ -119,6 +119,7 @@
             wasm-bindgen-cli
             pkgs.binaryen
             pkgs.tailwindcss_4
+            pkgs.dioxus-cli
           ] ++ lib.optionals pkgs.stdenv.isDarwin [
             fakeCodesign
           ];
@@ -182,13 +183,17 @@
               inherit cargoArtifacts;
               doNotPostBuildInstallCargoBinaries = true;
               buildPhaseCargoCommand = ''
-                cd packages/web
                 dx build --release --platform web
               '';
               installPhaseCommand = ''
-                cd "$NIX_BUILD_TOP/source"
                 mkdir -p $out/www
-                cp -r target/dx/web/release/web/* $out/www/
+                web_out="$(find target -type d \( -path '*/dx/web/release/web' -o -path '*/web/release/web' \) | head -n1)"
+                if [ -z "$web_out" ]; then
+                  echo "could not find web build output"
+                  find target -type d | sed -n '1,120p'
+                  exit 1
+                fi
+                cp -r "$web_out"/* $out/www/
               '';
               doCheck = false;
             });
@@ -201,19 +206,17 @@
               inherit cargoArtifacts;
               doNotPostBuildInstallCargoBinaries = true;
               buildPhaseCargoCommand = ''
-                cd packages/desktop
-                dx build --release --platform desktop
+                cargo build --release --locked
               '';
               installPhaseCommand = ''
-                cd "$NIX_BUILD_TOP/source"
                 mkdir -p $out/bin
-                if [ -d "target/dx/desktop/release/macos" ]; then
-                  mkdir -p $out/Applications
-                  cp -r target/dx/desktop/release/macos/*.app $out/Applications/
-                  ln -s "$out/Applications/"*.app"/Contents/MacOS/"* $out/bin/devbuddy
-                elif [ -f "target/release/desktop" ]; then
-                  cp target/release/desktop $out/bin/devbuddy
+                bin="$(find target -type f \( -path '*/release/devbuddy' -o -path '*/release/desktop' -o -path '*/desktop-dev/devbuddy' \) | head -n1)"
+                if [ -z "$bin" ]; then
+                  echo "could not find devbuddy binary"
+                  find target -type f \( -name 'devbuddy' -o -name 'desktop' \) | sed -n '1,80p'
+                  exit 1
                 fi
+                cp "$bin" $out/bin/devbuddy
               '';
               doCheck = false;
             });
