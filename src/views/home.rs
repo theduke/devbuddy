@@ -1,4 +1,5 @@
 use crate::{
+    assets::{DOWN_ARROW, GITHUB_MARK, REFRESH, SORT, UP_ARROW},
     components::item::{format_relative_time, ItemCard},
     notify::{build_notifier, DynNotifier, NotificationOptions},
     source::github::{GithubCiRunStatus, GithubClient, OpenPullRequestSummary, PullRequestSummary},
@@ -264,7 +265,7 @@ pub fn Home() -> Element {
                     div { class: "is-flex is-align-items-center",
                         img {
                             class: "review-hero-icon mr-4",
-                            src: asset!("/assets/github-mark.svg"),
+                            src: GITHUB_MARK,
                             alt: "GitHub",
                             width: "48",
                             height: "48",
@@ -287,7 +288,7 @@ pub fn Home() -> Element {
                                 button { class: "button is-static review-sort-selector-label",
                                     span { class: "icon is-small",
                                         img {
-                                            src: asset!("/assets/sort.svg"),
+                                            src: SORT,
                                             alt: "",
                                             width: "16",
                                             height: "16",
@@ -305,7 +306,7 @@ pub fn Home() -> Element {
                                     onclick: move |_| refresh.send(HomeCommand::Sort(HomeSort::Oldest)),
                                     span { class: "icon is-small mr-1",
                                         img {
-                                            src: asset!("/assets/up-arrow.svg"),
+                                            src: UP_ARROW,
                                             alt: "",
                                             width: "16",
                                             height: "16",
@@ -323,7 +324,7 @@ pub fn Home() -> Element {
                                     onclick: move |_| refresh.send(HomeCommand::Sort(HomeSort::Newest)),
                                     span { class: "icon is-small mr-1",
                                         img {
-                                            src: asset!("/assets/down-arrow.svg"),
+                                            src: DOWN_ARROW,
                                             alt: "",
                                             width: "16",
                                             height: "16",
@@ -371,7 +372,7 @@ pub fn Home() -> Element {
                                 if !is_loading {
                                     span { class: "icon is-small m-0 is-flex is-align-items-center is-justify-content-center",
                                         img {
-                                            src: asset!("/assets/refresh.svg"),
+                                            src: REFRESH,
                                             alt: "",
                                             width: "16",
                                             height: "16",

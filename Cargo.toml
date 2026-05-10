@@ -20,11 +20,12 @@ native = ["dioxus/native", "ureq"]
 anyhow = "1.0.102"
 async-trait = "0.1.89"
 dioxus = { version = "0.7.9", features = ["router"] }
-dioxus-bulma = { git = "https://github.com/theduke/dioxus-bulma" }
+dioxus-bulma = { git = "https://github.com/theduke/dioxus-bulma", default-features = false }
 dioxus-sdk-notification = { version = "0.7.0", optional = true }
 notify-rust = { version = "4.17.0", optional = true }
 futures = "0.3.32"
 http = "1.4.0"
+rust-embed = { version = "8.11", features = ["debug-embed"] }
 serde = { version = "1.0.228", features = ["derive"] }
 serde_json = "1.0.145"
 tokio = { version = "1.52.3", features = ["time"] }

@@ -1,4 +1,7 @@
-use crate::Route;
+use crate::{
+    assets::{FAVICON, GEAR},
+    Route,
+};
 use dioxus::prelude::*;
 use dioxus_bulma::{Container, Section};
 
@@ -26,7 +29,7 @@ pub fn Navbar() -> Element {
                         class: "navbar-item",
                         onclick: move |_| menu_open.set(false),
                         img {
-                            src: asset!("/assets/favicon.ico"),
+                            src: FAVICON,
                             alt: "DevBuddy logo",
                         }
                         span { class: "ml-2 has-text-weight-semibold", "DevBuddy" }
@@ -38,7 +41,7 @@ pub fn Navbar() -> Element {
                         title: "Settings",
                         aria_label: "Settings",
                         onclick: move |_| menu_open.set(false),
-                        span { class: "icon is-small", img { src: asset!("/assets/gear.svg"), alt: "" } }
+                        span { class: "icon is-small", img { src: GEAR, alt: "" } }
                         span { class: "is-sr-only", "Settings" }
                     }
                     button {

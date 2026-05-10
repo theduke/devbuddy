@@ -1,3 +1,4 @@
+use crate::assets::HEADER;
 use dioxus::prelude::*;
 
 #[component]
@@ -8,7 +9,7 @@ pub fn Hero() -> Element {
             // Attributes should be defined in the element before any children
             id: "hero",
             // After all attributes are defined, we can define child elements and components
-            img { src: asset!("/assets/header.svg"), id: "header" }
+            img { src: HEADER, id: "header" }
             div { id: "links",
                 // The RSX macro also supports text nodes surrounded by quotes
                 a { href: "https://dioxuslabs.com/learn/0.7/", "📚 Learn Dioxus???" }

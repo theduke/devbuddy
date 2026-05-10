@@ -1,4 +1,5 @@
 use super::format_relative_time;
+use crate::assets::{BRANCH, GITHUB_MARK, PULL_REQUEST};
 use crate::store::types::{
     GithubUserPullRequestItem, Item, ItemKind, PullRequestCiStatus, PullRequestReviewDecision,
 };
@@ -122,7 +123,7 @@ fn PullRequestBox(
                 class: "review-pr-link has-text-dark",
                 div { class: "{icon_class}",
                     img {
-                        src: asset!("/assets/github-mark.svg"),
+                        src: GITHUB_MARK,
                         alt: "GitHub",
                         width: "22",
                         height: "22",
@@ -130,7 +131,7 @@ fn PullRequestBox(
                     match icon_kind {
                         PullRequestIconKind::ReviewRequest => rsx! {
                             img {
-                                src: asset!("/assets/pull-request.svg"),
+                                src: PULL_REQUEST,
                                 alt: "Pull request waiting for review",
                                 width: "22",
                                 height: "22",
@@ -138,7 +139,7 @@ fn PullRequestBox(
                         },
                         PullRequestIconKind::OwnPullRequest => rsx! {
                             img {
-                                src: asset!("/assets/branch.svg"),
+                                src: BRANCH,
                                 alt: "Your pull request",
                                 width: "22",
                                 height: "22",
