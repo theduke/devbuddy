@@ -1,20 +1,17 @@
 #![allow(non_snake_case)]
 
+pub mod assets;
 mod components;
 mod notify;
 mod route;
 mod source;
 mod store;
+
 mod views;
 
+use crate::assets::{install, BULMA_CSS, FAVICON, MAIN_CSS};
 use dioxus::prelude::*;
 use route::Route;
-use std::sync::Arc;
-
-use crate::store::{DynStore, FsStore};
-
-const FAVICON: Asset = asset!("/assets/favicon.ico");
-const MAIN_CSS: Asset = asset!("/assets/styling/main.css");
 
 fn main() {
     dioxus::launch(App);
@@ -22,13 +19,15 @@ fn main() {
 
 #[component]
 fn App() -> Element {
-    let store: DynStore = Arc::new(FsStore::new(None));
+    install();
+
+    let store = crate::store::build_store();
     use_context_provider(|| store.clone());
 
     rsx! {
         document::Link { rel: "icon", href: FAVICON }
         document::Title { "GitHub review requests" }
-        dioxus_bulma::embed::StylesheetBulma {}
+        document::Stylesheet { href: BULMA_CSS }
         document::Stylesheet { href: MAIN_CSS }
         Router::<Route> {}
     }

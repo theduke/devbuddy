@@ -26,3 +26,16 @@ pub trait Store: Send + Sync {
 
     async fn store_items(&self, items: Vec<Item>) -> anyhow::Result<()>;
 }
+
+pub fn build_store() -> DynStore {
+    #[cfg(any(feature = "desktop", feature = "native"))]
+    {
+        let s: DynStore = Arc::new(fs::FsStore::new(None));
+        s
+    }
+
+    #[cfg(not(any(feature = "desktop", feature = "native")))]
+    {
+        panic!("no store implemented yet on web targets")
+    }
+}
