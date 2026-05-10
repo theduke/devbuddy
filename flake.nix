@@ -194,9 +194,10 @@
             });
 
             # Desktop app (native webview via dx)
-            desktop = craneLib.buildPackage (commonArgs // {
-              pname = "desktop";
+            devbuddy = craneLib.buildPackage (commonArgs // {
+              pname = "devbuddy";
               version = rev;
+              meta.mainProgram = "devbuddy";
               inherit cargoArtifacts;
               doNotPostBuildInstallCargoBinaries = true;
               buildPhaseCargoCommand = ''
@@ -209,15 +210,29 @@
                 if [ -d "target/dx/desktop/release/macos" ]; then
                   mkdir -p $out/Applications
                   cp -r target/dx/desktop/release/macos/*.app $out/Applications/
-                  ln -s "$out/Applications/"*.app"/Contents/MacOS/"* $out/bin/desktop
+                  ln -s "$out/Applications/"*.app"/Contents/MacOS/"* $out/bin/devbuddy
                 elif [ -f "target/release/desktop" ]; then
-                  cp target/release/desktop $out/bin/
+                  cp target/release/desktop $out/bin/devbuddy
                 fi
               '';
               doCheck = false;
             });
 
-            default = self'.packages.desktop;
+            default = self'.packages.devbuddy;
+          };
+
+          # ============================================================
+          # Apps
+          # ============================================================
+          apps = {
+            devbuddy = {
+              type = "app";
+              program = "${lib.getExe self'.packages.devbuddy}";
+            };
+            default = {
+              type = "app";
+              program = "${lib.getExe self'.packages.devbuddy}";
+            };
           };
 
           # ============================================================
