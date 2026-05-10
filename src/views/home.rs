@@ -1157,7 +1157,7 @@ fn ActiveCiRunsPanel(
             class: "review-section active-ci-section pt-5 pb-0",
             Container {
                 class: "review-container",
-                div { class: "review-panel active-ci-panel",
+                div { class: "review-panel active-ci-panel mb-5",
                     PullRequestListHeader {
                         title: "Live CI".to_string(),
                         subtitle: "Active PR checks, refreshed every few seconds.".to_string(),
@@ -1186,6 +1186,7 @@ fn ActiveCiRunsPanel(
                     }
                 }
             }
+            hr {}
         }
     }
 }
