@@ -28,7 +28,7 @@ jobs:
             artifact_name: devbuddy-windows
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Rust toolchain
         uses: dtolnay/rust-toolchain@stable
