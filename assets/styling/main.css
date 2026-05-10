@@ -94,6 +94,19 @@ body {
     gap: 0.5rem;
 }
 
+.active-ci-section {
+    background: linear-gradient(180deg, #f5f7fb 0%, rgba(245, 247, 251, 0) 100%);
+}
+
+.active-ci-panel {
+    max-width: 980px;
+    margin: 0 auto;
+}
+
+.active-ci-stack {
+    gap: 0.45rem;
+}
+
 .review-pr-box {
     overflow: hidden;
     border: 1px solid #e4ebf5;
@@ -316,5 +329,109 @@ body {
 
 .review-age-red {
     color: rgb(var(--age-red));
+}
+
+.active-ci-card .review-pr-link {
+    grid-template-columns: 3.25rem minmax(0, 1fr) 7.5rem;
+}
+
+.active-ci-icons {
+    gap: 0.3rem;
+}
+
+.active-ci-glyph {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 1.65rem;
+    height: 1.25rem;
+    border: 1px solid rgba(20, 93, 160, 0.22);
+    border-radius: 999px;
+    background: rgba(20, 93, 160, 0.08);
+    color: #145da0;
+    font-size: 0.64rem;
+    font-weight: 800;
+    letter-spacing: 0.08em;
+}
+
+.active-ci-content {
+    padding-top: 0.5rem;
+    padding-bottom: 0.55rem;
+}
+
+.active-ci-meter {
+    display: flex;
+    height: 0.38rem;
+    overflow: hidden;
+    border-radius: 999px;
+    background: rgba(83, 97, 115, 0.14);
+}
+
+.active-ci-meter span {
+    min-width: 0;
+}
+
+.active-ci-meter-success {
+    background: rgb(var(--age-green));
+}
+
+.active-ci-meter-failed {
+    background: rgb(var(--age-red));
+}
+
+.active-ci-meter-running {
+    background: #f1b604;
+}
+
+.active-ci-counts {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.35rem;
+}
+
+.active-ci-count {
+    display: inline-flex;
+    align-items: center;
+    border: 1px solid rgba(83, 97, 115, 0.16);
+    border-radius: 999px;
+    padding: 0.08rem 0.45rem;
+    background: rgba(255, 255, 255, 0.58);
+    color: #536173;
+    font-size: 0.72rem;
+    font-weight: 700;
+    line-height: 1.45;
+    white-space: nowrap;
+}
+
+.active-ci-count-success {
+    color: rgb(var(--age-green));
+    border-color: rgba(var(--age-green), 0.24);
+}
+
+.active-ci-count-failed {
+    color: rgb(var(--age-red));
+    border-color: rgba(var(--age-red), 0.24);
+}
+
+.active-ci-count-running {
+    color: rgb(var(--age-yellow));
+    border-color: rgba(var(--age-yellow), 0.24);
+}
+
+.active-ci-age {
+    color: #536173;
+}
+
+.active-ci-empty {
+    border-style: dashed;
+    color: #66758a;
+    font-weight: 600;
+    text-align: center;
+}
+
+@media screen and (max-width: 768px) {
+    .active-ci-card .review-pr-link {
+        grid-template-columns: 3.5rem minmax(0, 1fr);
+    }
 }
 
