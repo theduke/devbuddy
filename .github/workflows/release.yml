@@ -1,0 +1,111 @@
+name: release
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+
+permissions:
+  contents: write
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  create-release:
+    name: Create GitHub release
+    runs-on: ubuntu-latest
+    steps:
+      - name: Create release
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+
+  desktop:
+    name: ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    needs: create-release
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            deps_script: scripts/install-dependencies-linux.sh
+            release_asset: devbuddy-linux
+          - os: macos-latest
+            deps_script: scripts/install-dependencies-macos.sh
+            release_asset: devbuddy-macos
+          - os: windows-latest
+            deps_script: scripts/install-dependencies-windows.sh
+            release_asset: devbuddy-windows.exe
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy,rustfmt
+
+      - name: Cache Rust build artifacts
+        uses: Swatinem/rust-cache@v2
+
+      - name: Install cargo-binstall
+        uses: cargo-bins/cargo-binstall@main
+
+      - name: Install Dioxus CLI
+        run: cargo binstall dioxus-cli --force --no-confirm --locked
+
+      - name: Add cargo bin to PATH on macOS
+        if: runner.os == 'macOS'
+        shell: bash
+        run: echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
+
+      - name: Install platform dependencies
+        shell: bash
+        run: bash "${{ matrix.deps_script }}"
+
+      - name: Configure OpenSSL for macOS
+        if: runner.os == 'macOS'
+        shell: bash
+        run: echo "PKG_CONFIG_PATH=$(brew --prefix openssl@3)/lib/pkgconfig" >> "$GITHUB_ENV"
+
+      - name: Build release desktop
+        shell: bash
+        run: |
+          if [[ "$RUNNER_OS" == "macOS" ]]; then
+            "$HOME/.cargo/bin/dx" build --desktop --release
+          else
+            dx build --desktop --release
+          fi
+
+      - name: Prepare artifact
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p artifact
+          case "$RUNNER_OS" in
+            Linux)
+              binary="$(find target/dx -path '*/release/linux/app/devbuddy' -type f | head -n 1)"
+              cp "$binary" "artifact/${{ matrix.release_asset }}"
+              ;;
+            macOS)
+              binary="$(find target/dx -path '*/release/macos/*.app/Contents/MacOS/*' -type f | head -n 1)"
+              cp "$binary" "artifact/${{ matrix.release_asset }}"
+              ;;
+            Windows)
+              binary="$(find target/dx -path '*/release/windows/app/devbuddy.exe' -type f | head -n 1)"
+              cp "$binary" "artifact/${{ matrix.release_asset }}"
+              ;;
+            *)
+              echo "Unsupported runner: $RUNNER_OS" >&2
+              exit 1
+              ;;
+          esac
+
+      - name: Upload artifact to release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: artifact/${{ matrix.release_asset }}
+          overwrite_files: true
+          fail_on_unmatched_files: true
