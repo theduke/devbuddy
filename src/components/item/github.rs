@@ -44,6 +44,7 @@ fn ReviewRequestCard(item: Item) -> Element {
             meta_suffix: Some(format!("@{}", pr.author)),
             subtitle: Some(subtitle),
             status_label: "NEEDS REVIEW",
+            action_url: None,
             age_value: format_requested_at(pr.requested_at),
             age_tone: age_tone_suffix(pr.requested_at),
             icon_kind: PullRequestIconKind::ReviewRequest,
@@ -68,6 +69,16 @@ fn OpenPullRequestCard(item: Item) -> Element {
         format_relative_time(pr.opened_at),
         format_requested_at(pr.last_pushed_at)
     );
+    let action_url = if pr.ci_status == PullRequestCiStatus::Failed {
+        pr.latest_ci_run_id.map(|run_id| {
+            format!(
+                "https://github.com/{}/{}/actions/runs/{run_id}",
+                pr.owner, pr.repo
+            )
+        })
+    } else {
+        None
+    };
 
     rsx! {
         PullRequestBox {
@@ -78,6 +89,7 @@ fn OpenPullRequestCard(item: Item) -> Element {
             meta_suffix: Some("@me".to_string()),
             subtitle: Some(subtitle),
             status_label: action.label,
+            action_url,
             age_value: format_requested_at(action.at),
             age_tone: age_tone_suffix(action.at),
             icon_kind: PullRequestIconKind::OwnPullRequest,
@@ -100,6 +112,7 @@ fn PullRequestBox(
     meta_suffix: Option<String>,
     subtitle: Option<String>,
     status_label: &'static str,
+    action_url: Option<String>,
     age_value: String,
     age_tone: &'static str,
     icon_kind: PullRequestIconKind,
@@ -116,12 +129,12 @@ fn PullRequestBox(
 
     rsx! {
         div { class: "box review-pr-box p-0 mb-0 {box_tone_class}",
-            a {
-                href: url,
-                target: "_blank",
-                rel: "noreferrer noopener",
-                class: "review-pr-link has-text-dark",
-                div { class: "{icon_class}",
+            div { class: "review-pr-link has-text-dark",
+                a {
+                    href: url.clone(),
+                    target: "_blank",
+                    rel: "noreferrer noopener",
+                    class: "{icon_class}",
                     img {
                         src: GITHUB_MARK,
                         alt: "GitHub",
@@ -147,7 +160,11 @@ fn PullRequestBox(
                         },
                     }
                 }
-                div { class: "review-pr-content",
+                a {
+                    href: url,
+                    target: "_blank",
+                    rel: "noreferrer noopener",
+                    class: "review-pr-content has-text-dark",
                     div { class: "review-pr-meta-row mb-1",
                         span { class: "review-repo has-text-weight-bold mr-2", "{repo}" }
                         span { class: "review-number is-family-monospace has-text-weight-semibold mr-2", "{number}" }
@@ -160,9 +177,20 @@ fn PullRequestBox(
                         p { class: "review-pr-subtitle", "{subtitle}" }
                     }
                 }
-                div { class: "{action_section_class}",
-                    span { class: "{action_label_class}", "{status_label}" }
-                    span { class: "{age_class}", "{age_value}" }
+                if let Some(action_url) = action_url {
+                    a {
+                        href: action_url,
+                        target: "_blank",
+                        rel: "noreferrer noopener",
+                        class: "{action_section_class} has-text-dark",
+                        span { class: "{action_label_class}", "{status_label}" }
+                        span { class: "{age_class}", "{age_value}" }
+                    }
+                } else {
+                    div { class: "{action_section_class}",
+                        span { class: "{action_label_class}", "{status_label}" }
+                        span { class: "{age_class}", "{age_value}" }
+                    }
                 }
             }
         }

@@ -171,6 +171,7 @@ pub struct OpenPullRequestSummary {
     pub last_pushed_at: Option<OffsetDateTime>,
     pub review_decision: PullRequestReviewDecision,
     pub ci_status: PullRequestCiStatus,
+    pub latest_ci_run_id: Option<i64>,
     pub last_review_comment_at: Option<OffsetDateTime>,
     pub last_changes_requested_at: Option<OffsetDateTime>,
     pub last_approved_at: Option<OffsetDateTime>,
@@ -196,6 +197,7 @@ pub enum PullRequestCiStatus {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct GithubCiRunStatus {
+    pub run_id: i64,
     pub total_jobs: usize,
     pub in_progress_jobs: usize,
     pub failed_jobs: usize,
@@ -678,7 +680,10 @@ impl GithubClient {
             return Err(anyhow!("github repo is empty"));
         }
 
-        let mut status = GithubCiRunStatus::default();
+        let mut status = GithubCiRunStatus {
+            run_id,
+            ..Default::default()
+        };
         let mut page = 1usize;
 
         loop {
@@ -764,7 +769,7 @@ impl GithubClient {
             &self.base_url,
             &self.token,
             &format!(
-                "/repos/{owner}/{repo}/actions/runs?branch={}&per_page=1",
+                "/repos/{owner}/{repo}/actions/runs?branch={}&per_page=1&sort=created&direction=desc",
                 encode_query_component(head_ref_name)
             ),
         )
@@ -839,7 +844,7 @@ impl GithubClient {
                         .and_then(|node| node.commit.as_ref())
                         .and_then(|commit| commit.status_check_rollup.as_ref()),
                 );
-                let ci_status = node
+                let mut ci_status = node
                     .commits
                     .nodes
                     .first()
@@ -848,6 +853,17 @@ impl GithubClient {
                     .and_then(|rollup| rollup.state)
                     .map(Into::into)
                     .unwrap_or(PullRequestCiStatus::Unknown);
+                let head_ref_name = node.head_ref_name;
+                let mut latest_ci_run_id = None;
+                if let Some(head_ref_name) = head_ref_name.as_deref() {
+                    if let Some(run_status) = self
+                        .active_ci_run_status(&owner, &repo, head_ref_name)
+                        .await?
+                    {
+                        latest_ci_run_id = Some(run_status.run_id);
+                        ci_status = ci_status_from_run_status(run_status);
+                    }
+                }
 
                 results.push(OpenPullRequestSummary {
                     owner,
@@ -856,13 +872,14 @@ impl GithubClient {
                     title,
                     html_url: url,
                     opened_at,
-                    head_ref_name: node.head_ref_name,
+                    head_ref_name,
                     last_pushed_at,
                     review_decision: node
                         .review_decision
                         .map(Into::into)
                         .unwrap_or(PullRequestReviewDecision::ReviewRequired),
                     ci_status,
+                    latest_ci_run_id,
                     last_review_comment_at,
                     last_changes_requested_at,
                     last_approved_at,
@@ -1069,6 +1086,18 @@ fn latest_timestamp(
         (None, Some(candidate)) => Some(candidate),
         (Some(current), None) => Some(current),
         (None, None) => None,
+    }
+}
+
+fn ci_status_from_run_status(status: GithubCiRunStatus) -> PullRequestCiStatus {
+    if status.failed_jobs > 0 {
+        PullRequestCiStatus::Failed
+    } else if status.in_progress_jobs > 0 {
+        PullRequestCiStatus::InProgress
+    } else if status.total_jobs > 0 && status.succeeded_jobs >= status.total_jobs {
+        PullRequestCiStatus::Success
+    } else {
+        PullRequestCiStatus::Unknown
     }
 }
 

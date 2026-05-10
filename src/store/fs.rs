@@ -351,6 +351,7 @@ mod tests {
                     last_pushed_at: None,
                     review_decision: PullRequestReviewDecision::Approved,
                     ci_status: PullRequestCiStatus::Success,
+                    latest_ci_run_id: Some(123),
                     last_review_comment_at: Some(timestamp(8)),
                     last_changes_requested_at: None,
                     last_approved_at: Some(timestamp(9)),
