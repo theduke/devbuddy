@@ -1146,28 +1146,22 @@ fn ActiveCiRunsPanel(
 
     let error = error.as_ref();
     let is_initial_loading = loading && active_runs.is_empty() && error.is_none();
+    let count_label = if active_runs.is_empty() {
+        None
+    } else {
+        Some(format!("{} running", active_runs.len()))
+    };
 
     rsx! {
         Section {
-            class: "review-section pt-5 pb-0",
+            class: "review-section active-ci-section pt-5 pb-0",
             Container {
                 class: "review-container",
-                div { class: "box",
-                    div { class: "is-flex is-justify-content-space-between is-align-items-center is-flex-wrap-wrap mb-4",
-                        div {
-                            h2 { class: "title is-5 has-text-grey-dark mb-1", "Active CI runs" }
-                            p { class: "review-list-subtitle mb-0", "Monitored separately from the main refresh ticker." }
-                        }
-                        button {
-                            class: if loading {
-                                "button is-small is-info is-loading"
-                            } else {
-                                "button is-small is-info"
-                            },
-                            disabled: loading,
-                            "aria-label": "Refresh active CI runs",
-                            span { class: "is-sr-only", "Refresh active CI runs" }
-                        }
+                div { class: "review-panel active-ci-panel",
+                    PullRequestListHeader {
+                        title: "Live CI".to_string(),
+                        subtitle: "Active PR checks, refreshed every few seconds.".to_string(),
+                        count_label,
                     }
                     if let Some(err) = error {
                         Notification {
@@ -1176,53 +1170,126 @@ fn ActiveCiRunsPanel(
                         }
                     }
                     if is_initial_loading {
-                        Notification {
-                            color: Some(Color::Info),
+                        div { class: "active-ci-empty box review-pr-box p-4 mb-0",
                             "Checking active CI runs…"
                         }
                     } else if active_runs.is_empty() {
-                        Notification {
-                            color: Some(Color::Success),
+                        div { class: "active-ci-empty box review-pr-box p-4 mb-0",
                             "No active CI runs."
                         }
                     } else {
-                        div { class: "review-card-stack",
+                        div { class: "review-card-stack active-ci-stack",
                             for run in active_runs {
-                                div { class: "box is-shadowless has-background-light",
-                                    div { class: "is-flex is-justify-content-space-between is-align-items-start is-flex-wrap-wrap gap-3",
-                                        div {
-                                            p { class: "has-text-weight-semibold mb-1",
-                                                "{run.pr.repo} #{run.pr.number}"
-                                            }
-                                            p { class: "mb-0",
-                                                a { href: run.pr.html_url.clone(), "{run.pr.title}" }
-                                            }
-                                            if let Some(branch) = &run.pr.head_ref_name {
-                                                p { class: "is-size-7 has-text-grey mt-1", "branch: {branch}" }
-                                            }
-                                        }
-                                        div { class: "buttons are-small has-addons mb-0",
-                                            span { class: "button is-static is-success is-light",
-                                                "{run.status.succeeded_jobs} succeeded"
-                                            }
-                                            span { class: "button is-static is-danger is-light",
-                                                "{run.status.failed_jobs} failed"
-                                            }
-                                            span { class: "button is-static is-warning is-light",
-                                                "{run.status.in_progress_jobs} in progress"
-                                            }
-                                            span { class: "button is-static is-info is-light",
-                                                "{run.status.total_jobs} total"
-                                            }
-                                        }
-                                    }
-                                }
+                                ActiveCiRunCard { run }
                             }
                         }
                     }
                 }
             }
         }
+    }
+}
+
+#[derive(Clone, Copy)]
+struct ActiveCiTone {
+    box_class: &'static str,
+    action_class: &'static str,
+    label_class: &'static str,
+    label: &'static str,
+}
+
+#[component]
+fn ActiveCiRunCard(run: ActiveCiRunSummary) -> Element {
+    let status = run.status;
+    let total_jobs = status.total_jobs.max(1);
+    let completed_jobs = status.succeeded_jobs + status.failed_jobs;
+    let progress_label = format!("{completed_jobs}/{} done", status.total_jobs);
+    let success_width = format!("width: {}%;", status.succeeded_jobs * 100 / total_jobs);
+    let failed_width = format!("width: {}%;", status.failed_jobs * 100 / total_jobs);
+    let running_width = format!("width: {}%;", status.in_progress_jobs * 100 / total_jobs);
+    let tone = active_ci_tone(status);
+    let card_class = format!(
+        "box review-pr-box p-0 mb-0 active-ci-card {}",
+        tone.box_class
+    );
+    let action_section_class = format!("review-pr-action-section {}", tone.action_class);
+    let action_label_class = format!("review-pr-action-label {}", tone.label_class);
+    let branch_label = run
+        .pr
+        .head_ref_name
+        .as_ref()
+        .map(|branch| format!("branch {branch}"));
+
+    rsx! {
+        div { class: "{card_class}",
+            a {
+                href: run.pr.html_url.clone(),
+                target: "_blank",
+                rel: "noreferrer noopener",
+                class: "review-pr-link active-ci-link has-text-dark",
+                div { class: "review-pr-icons active-ci-icons",
+                    img {
+                        src: GITHUB_MARK,
+                        alt: "GitHub",
+                        width: "22",
+                        height: "22",
+                    }
+                    span { class: "active-ci-glyph", "CI" }
+                }
+                div { class: "review-pr-content active-ci-content",
+                    div { class: "review-pr-meta-row mb-1",
+                        span { class: "review-repo has-text-weight-bold mr-2", "{run.pr.repo}" }
+                        span { class: "review-number is-family-monospace has-text-weight-semibold mr-2", "#{run.pr.number}" }
+                        if let Some(branch_label) = branch_label {
+                            span { class: "review-author has-text-weight-semibold", "{branch_label}" }
+                        }
+                    }
+                    p { class: "review-pr-title has-text-weight-semibold", "{run.pr.title}" }
+                    div { class: "active-ci-meter mt-2", "aria-label": "CI progress",
+                        span { class: "active-ci-meter-success", style: "{success_width}" }
+                        span { class: "active-ci-meter-failed", style: "{failed_width}" }
+                        span { class: "active-ci-meter-running", style: "{running_width}" }
+                    }
+                    div { class: "active-ci-counts mt-2",
+                        span { class: "active-ci-count active-ci-count-success", "{status.succeeded_jobs} passed" }
+                        span { class: "active-ci-count active-ci-count-failed", "{status.failed_jobs} failed" }
+                        span { class: "active-ci-count active-ci-count-running", "{status.in_progress_jobs} running" }
+                        span { class: "active-ci-count", "{status.total_jobs} total" }
+                    }
+                }
+                div { class: "{action_section_class}",
+                    span { class: "{action_label_class}", "{tone.label}" }
+                    span { class: "review-age active-ci-age", "{progress_label}" }
+                }
+            }
+        }
+    }
+}
+
+fn active_ci_tone(status: GithubCiRunStatus) -> ActiveCiTone {
+    if status.failed_jobs > 0 {
+        return ActiveCiTone {
+            box_class: "review-pr-box-red",
+            action_class: "review-pr-action-section-red",
+            label_class: "review-pr-action-label-red",
+            label: "CI FAIL",
+        };
+    }
+
+    if status.in_progress_jobs > 0 {
+        return ActiveCiTone {
+            box_class: "review-pr-box-yellow",
+            action_class: "review-pr-action-section-yellow",
+            label_class: "review-pr-action-label-yellow",
+            label: "CI RUNNING",
+        };
+    }
+
+    ActiveCiTone {
+        box_class: "review-pr-box-green",
+        action_class: "review-pr-action-section-green",
+        label_class: "review-pr-action-label-green",
+        label: "CI PASS",
     }
 }
 
